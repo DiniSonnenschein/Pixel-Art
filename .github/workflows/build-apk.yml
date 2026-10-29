@@ -67,6 +67,10 @@ jobs:
         run: |
           # Beim Einfügen ins Secret rutschen leicht Leerzeichen/Zeilenumbrüche mit.
           export KEYSTORE_PASSWORD="$(printf '%s' "$RAW_PASSWORD" | tr -d '[:space:]')"
+          # Diagnose ohne das Passwort preiszugeben: Länge und kurzer Prüfwert
+          echo "Passwort: ${#KEYSTORE_PASSWORD} Zeichen, Prüfwert $(printf '%s' "$KEYSTORE_PASSWORD" | sha256sum | cut -c1-8)"
+          echo "Schlüsseldatei: Prüfwert $(sha256sum < "$KEYSTORE_PATH" | cut -c1-8)"
+          keytool -list -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" >/dev/null && echo "keytool: Passwort passt" || echo "keytool: Passwort passt NICHT"
           ./gradlew assembleRelease --no-daemon
 
       - name: APK umbenennen
