@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Pixel-Werkstatt</string>
+    <string name="title_activity_main">Pixel-Werkstatt</string>
+    <string name="package_name">de.dinisonnenschein.pixelwerkstatt</string>
+    <string name="custom_url_scheme">de.dinisonnenschein.pixelwerkstatt</string>
+</resources>

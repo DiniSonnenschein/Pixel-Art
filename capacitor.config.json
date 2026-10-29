@@ -1,0 +1,11 @@
+{
+  "appId": "de.dinisonnenschein.pixelwerkstatt",
+  "appName": "Pixel-Werkstatt",
+  "webDir": "www",
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "native",
+      "style": "DARK"
+    }
+  }
+}

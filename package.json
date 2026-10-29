@@ -1,0 +1,30 @@
+{
+  "name": "pixel-werkstatt",
+  "version": "1.0.0",
+  "description": "Pixel-Art-Editor für Android",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "watch": "node tools/build.mjs --watch",
+    "test": "node --test test/*.test.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DiniSonnenschein/Pixel-Art.git"
+  },
+  "bugs": {
+    "url": "https://github.com/DiniSonnenschein/Pixel-Art/issues"
+  },
+  "homepage": "https://github.com/DiniSonnenschein/Pixel-Art#readme",
+  "dependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/share": "^8.0.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.0",
+    "esbuild": "^0.28.2"
+  },
+  "private": true,
+  "type": "module"
+}

@@ -1,0 +1,74 @@
+name: APK bauen
+
+on:
+  push:
+    branches: [main, 'claude/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      VERSION_CODE: ${{ github.run_number }}
+      APP_VERSION: 1.0.${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Signaturschlüssel prüfen
+        id: key
+        run: |
+          if [ -f android/app/pixel-werkstatt.jks ]; then echo "present=true" >> "$GITHUB_OUTPUT";
+          else echo "::warning::Kein Signaturschlüssel im Repository – APK-Bau wird übersprungen."; echo "present=false" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Abhängigkeiten installieren
+        run: npm ci
+
+      - name: Tests
+        run: npm test
+
+      - name: Web-Teil bauen
+        run: npm run build
+
+      - name: Capacitor synchronisieren
+        if: steps.key.outputs.present == 'true'
+
+        run: npx cap sync android
+
+      - name: APK bauen
+        if: steps.key.outputs.present == 'true'
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: APK umbenennen
+        if: steps.key.outputs.present == 'true'
+
+        run: cp android/app/build/outputs/apk/release/app-release.apk Pixel-Werkstatt.apk
+
+      - name: Release veröffentlichen
+        if: steps.key.outputs.present == 'true'
+
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${APP_VERSION}" Pixel-Werkstatt.apk \
+            --target "${GITHUB_SHA}" \
+            --title "Pixel-Werkstatt ${APP_VERSION}" \
+            --notes "Automatischer Build von \`${GITHUB_REF_NAME}\` (${GITHUB_SHA::7}). Zum Installieren die Datei Pixel-Werkstatt.apk auf dem Handy herunterladen und öffnen." \
+            --latest

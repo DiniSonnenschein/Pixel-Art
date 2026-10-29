@@ -1,0 +1,93 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { inflateSync } from 'node:zlib';
+import { encodePNG } from '../src/png.js';
+import { scaleNearest, isCleanScale, compositeFrame, createDocument, createLayer } from '../src/document.js';
+import { Stroke } from '../src/tools.js';
+
+// Minimaler PNG-Decoder (nur RGBA, 8 Bit, Filter 0) zum Gegenprüfen
+function decode(png) {
+  const view = new DataView(png.buffer, png.byteOffset);
+  let off = 8, width, height, idat = [];
+  while (off < png.length) {
+    const len = view.getUint32(off);
+    const type = String.fromCharCode(...png.subarray(off + 4, off + 8));
+    const data = png.subarray(off + 8, off + 8 + len);
+    if (type === 'IHDR') { width = view.getUint32(off + 8); height = view.getUint32(off + 12); assert.equal(data[9], 6); }
+    if (type === 'IDAT') idat.push(data);
+    off += 12 + len;
+  }
+  const raw = inflateSync(Buffer.concat(idat));
+  const out = new Uint8Array(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    assert.equal(raw[y * (width * 4 + 1)], 0);
+    out.set(raw.subarray(y * (width * 4 + 1) + 1, (y + 1) * (width * 4 + 1)), y * width * 4);
+  }
+  return { width, height, pixels: out };
+}
+
+test('PNG enthält jeden Pixel exakt, auch halbtransparente', async () => {
+  const w = 37, h = 23;
+  const px = new Uint8ClampedArray(w * h * 4);
+  for (let i = 0; i < px.length; i++) px[i] = (i * 7919) % 256;
+  const png = await encodePNG(w, h, px);
+  const dec = decode(png);
+  assert.equal(dec.width, w);
+  assert.equal(dec.height, h);
+  assert.deepEqual(dec.pixels, new Uint8Array(px));
+});
+
+test('PNG mit unkomprimiertem Fallback ist gültig', async () => {
+  const saved = globalThis.CompressionStream;
+  globalThis.CompressionStream = undefined;
+  try {
+    const w = 300, h = 300; // > 65535 Bytes -> mehrere Blöcke
+    const px = new Uint8ClampedArray(w * h * 4).map((_, i) => i % 251);
+    const dec = decode(await encodePNG(w, h, px));
+    assert.deepEqual(dec.pixels, new Uint8Array(px));
+  } finally {
+    globalThis.CompressionStream = saved;
+  }
+});
+
+test('Nearest-Neighbor verdoppelt jeden Pixel zu 2×2', () => {
+  const src = new Uint8ClampedArray([1,2,3,4, 5,6,7,8]); // 2×1
+  const out = scaleNearest(src, 2, 1, 4, 2);
+  assert.deepEqual([...out], [1,2,3,4, 1,2,3,4, 5,6,7,8, 5,6,7,8, 1,2,3,4, 1,2,3,4, 5,6,7,8, 5,6,7,8]);
+  assert.deepEqual([...scaleNearest(out, 4, 2, 2, 1)], [...src]);
+});
+
+test('Saubere Skalierungsfaktoren', () => {
+  assert.ok(isCleanScale(64, 128));
+  assert.ok(isCleanScale(64, 32));
+  assert.ok(isCleanScale(64, 64));
+  assert.ok(!isCleanScale(64, 100));
+  assert.ok(!isCleanScale(64, 48));
+});
+
+test('Ebenen werden verrechnet, deckende Pixel bleiben exakt', () => {
+  const doc = createDocument(2, 1);
+  const top = createLayer(2, 1);
+  doc.frames[0].layers.push(top);
+  doc.frames[0].layers[0].data.set([10,20,30,255, 0,0,0,0]);
+  top.data.set([0,0,0,0, 200,100,50,255]);
+  assert.deepEqual([...compositeFrame(doc, doc.frames[0])], [10,20,30,255, 200,100,50,255]);
+  top.visible = false;
+  assert.deepEqual([...compositeFrame(doc, doc.frames[0])], [10,20,30,255, 0,0,0,0]);
+});
+
+test('Strich zieht lückenlose Linie und lässt sich rückgängig machen', () => {
+  const layer = createLayer(8, 8);
+  const s = new Stroke(layer, 8, 8, 0xff0000ff);
+  s.to(0, 0);
+  s.to(7, 3);
+  s.to(20, 20); // außerhalb wird ignoriert
+  const px = new Uint32Array(layer.data.buffer);
+  const set = [...px].map((v, i) => (v ? i : -1)).filter((i) => i >= 0);
+  assert.ok(set.length >= 8);
+  const entry = s.finish();
+  entry.undo();
+  assert.ok(px.every((v) => v === 0));
+  entry.redo();
+  assert.equal([...px].filter(Boolean).length, set.length);
+});

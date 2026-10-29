@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#16161c">
+  <title>Pixel-Werkstatt</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <button id="btn-menu" class="icon-btn" aria-label="Menü"></button>
+    <span id="doc-info" class="doc-info"></span>
+    <span class="spacer"></span>
+    <button id="btn-undo" class="icon-btn" aria-label="Rückgängig"></button>
+    <button id="btn-redo" class="icon-btn" aria-label="Wiederherstellen"></button>
+    <button id="btn-grid" class="icon-btn" aria-label="Raster ein/aus"></button>
+    <button id="btn-fit" class="icon-btn" aria-label="Einpassen"></button>
+  </header>
+
+  <main class="stage">
+    <canvas id="canvas"></canvas>
+  </main>
+
+  <nav class="toolbar">
+    <button class="tool-btn" data-tool="pen"><span class="label">Stift</span></button>
+    <button class="tool-btn" data-tool="eraser"><span class="label">Radierer</span></button>
+    <span class="spacer"></span>
+    <button id="btn-color" class="color-btn" aria-label="Farbe wählen">
+      <span class="color-chip-bg"><span id="color-chip" class="color-chip"></span></span>
+      <span class="label">Farbe</span>
+    </button>
+  </nav>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
