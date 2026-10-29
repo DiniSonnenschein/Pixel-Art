@@ -18,19 +18,22 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
-    // Fester Schlüssel im Repository (bewusst so gewählt: private App).
+    // Der Signaturschlüssel kommt aus GitHub-Secrets (siehe build-apk.yml).
     // Android akzeptiert Updates nur mit demselben Schlüssel.
+    def keystorePath = System.getenv("KEYSTORE_PATH")
     signingConfigs {
         release {
-            storeFile file('pixel-werkstatt.jks')
-            storePassword 'pixelwerkstatt'
-            keyAlias 'pixelwerkstatt'
-            keyPassword 'pixelwerkstatt'
+            if (keystorePath) {
+                storeFile file(keystorePath)
+                storePassword System.getenv("KEYSTORE_PASSWORD")
+                keyAlias 'pixelwerkstatt'
+                keyPassword System.getenv("KEYSTORE_PASSWORD")
+            }
         }
     }
     buildTypes {
         release {
-            signingConfig signingConfigs.release
+            if (keystorePath) signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

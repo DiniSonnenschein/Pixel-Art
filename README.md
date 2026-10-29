@@ -44,3 +44,7 @@ python3 -m http.server -d www   # im Browser testen
 
 Die APK baut GitHub Actions bei jedem Push (`.github/workflows/build-apk.yml`) und hängt sie
 an ein neues Release.
+
+Zum Signieren braucht das Repository zwei Secrets (Settings → Secrets and variables → Actions):
+`ANDROID_KEYSTORE_BASE64` (der Schlüssel als Base64) und `ANDROID_KEYSTORE_PASSWORD`.
+Fehlen sie, läuft nur der Test, die APK wird übersprungen.
