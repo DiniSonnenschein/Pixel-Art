@@ -5,7 +5,7 @@ import { encodePNG } from './png.js';
 import { saveFile, shareFile, fileExists, sanitizeName } from './exporter.js';
 import { h, openDialog, confirmDialog, numberField, toast } from './ui.js';
 
-const PRESETS = [16, 32, 64, 128, 192, 256];
+const PRESETS = [[16, 16], [32, 32], [64, 64], [128, 128], [256, 256], [32, 64], [64, 32], [64, 128], [128, 64]];
 
 function clampSize(v) {
   return Number.isFinite(v) ? Math.min(MAX_SIZE, Math.max(MIN_SIZE, v)) : null;
@@ -21,16 +21,16 @@ function sizeFields(w, h0) {
 export function newImageDialog(app) {
   const { wf, hf, row } = sizeFields(app.doc.width, app.doc.height);
   const presets = h('div', { class: 'chips' },
-    PRESETS.map((s) =>
+    PRESETS.map(([pw, ph]) =>
       h('button', {
         class: 'chip',
-        onClick: () => { wf.input.value = s; hf.input.value = s; },
-      }, `${s}×${s}`),
+        onClick: () => { wf.input.value = pw; hf.input.value = ph; },
+      }, `${pw}×${ph}`),
     ),
   );
   openDialog({
     title: 'Neues Bild',
-    body: h('div', {}, row, h('p', { class: 'hint' }, 'Schnellauswahl:'), presets,
+    body: h('div', {}, row, h('p', { class: 'hint' }, 'Breite und Höhe sind unabhängig – tippe einfach eigene Werte ein. Schnellauswahl:'), presets,
       h('p', { class: 'hint' }, 'Das aktuelle Bild wird dabei ersetzt. Exportiere es vorher, wenn du es behalten möchtest.')),
     actions: [
       { label: 'Abbrechen' },
@@ -53,7 +53,7 @@ export function newImageDialog(app) {
 export function resizeDialog(app) {
   const doc = app.doc;
   const { wf, hf, row } = sizeFields(doc.width, doc.height);
-  const lock = h('input', { type: 'checkbox', checked: true });
+  const lock = h('input', { type: 'checkbox' });
   const info = h('p', { class: 'hint' });
   const ratio = doc.width / doc.height;
 

@@ -7,6 +7,8 @@ import { compositeFrame, currentFrame } from './document.js';
 const MAX_ZOOM = 96; // Bildschirm-Pixel pro Bild-Pixel
 const GRID_MIN_ZOOM = 6;
 const CANCEL_STROKE_MS = 250; // Zweiter Finger kurz nach dem ersten -> Strich verwerfen
+const TOUCH_SLOP = 8; // So weit (CSS-px) darf der Finger beim Antippen wackeln
+const TOUCH_SMOOTHING = 0.45; // 1 = keine Glättung; kleiner = ruhiger, aber träger
 
 export class CanvasView {
   constructor(canvas, { getDoc, onStrokeStart, onStrokeMove, onStrokeEnd, onStrokeCancel }) {
@@ -172,7 +174,12 @@ export class CanvasView {
       this.mode = 'draw';
       this.drawPointer = e.pointerId;
       this.strokeStart = performance.now();
-      this.cb.onStrokeStart(this.toDocPixel(this.pointers.get(e.pointerId)));
+      this.downPoint = this.pointers.get(e.pointerId);
+      this.isTouch = e.pointerType === 'touch';
+      this.slopPassed = !this.isTouch;
+      this.smoothed = { ...this.downPoint };
+      this.lastRaw = null;
+      this.cb.onStrokeStart(this.toDocPixel(this.downPoint));
     } else if (this.pointers.size === 2) {
       if (this.mode === 'draw') {
         if (performance.now() - this.strokeStart < CANCEL_STROKE_MS) this.cb.onStrokeCancel();
@@ -186,7 +193,23 @@ export class CanvasView {
     if (!this.pointers.has(e.pointerId)) return;
     const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
     if (this.mode === 'draw' && e.pointerId === this.drawPointer) {
-      for (const ev of events.length ? events : [e]) this.cb.onStrokeMove(this.toDocPixel(this.localPoint(ev)));
+      for (const ev of events.length ? events : [e]) {
+        const p = this.localPoint(ev);
+        // Kleines Wackeln beim Aufsetzen soll keine Nachbarpixel einfärben
+        if (!this.slopPassed) {
+          if (Math.hypot(p.x - this.downPoint.x, p.y - this.downPoint.y) < TOUCH_SLOP) continue;
+          this.slopPassed = true;
+        }
+        // Fingerzittern dämpfen: Position folgt dem Finger etwas weich nach
+        if (this.isTouch) {
+          this.lastRaw = p;
+          this.smoothed.x += (p.x - this.smoothed.x) * TOUCH_SMOOTHING;
+          this.smoothed.y += (p.y - this.smoothed.y) * TOUCH_SMOOTHING;
+          this.cb.onStrokeMove(this.toDocPixel(this.smoothed));
+        } else {
+          this.cb.onStrokeMove(this.toDocPixel(p));
+        }
+      }
     }
     this.pointers.set(e.pointerId, this.localPoint(e));
     if (this.mode === 'gesture') this.updateGesture();
@@ -196,6 +219,8 @@ export class CanvasView {
     if (!this.pointers.has(e.pointerId)) return;
     this.pointers.delete(e.pointerId);
     if (this.mode === 'draw' && e.pointerId === this.drawPointer) {
+      // Die Glättung hinkt etwas hinterher: Strich bis zur letzten echten Position ziehen
+      if (!cancelled && this.lastRaw) this.cb.onStrokeMove(this.toDocPixel(this.lastRaw));
       if (cancelled) this.cb.onStrokeCancel();
       else this.cb.onStrokeEnd();
       this.mode = 'idle';
