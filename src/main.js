@@ -5,8 +5,10 @@ import { History } from './history.js';
 import { Stroke, floodFill } from './tools.js';
 import { ColorPicker, colorToCss, colorToHex, parseHex, sameColor } from './colorpicker.js';
 import { CanvasView } from './view.js';
-import { loadAutosave, saveAutosave, deserialize } from './storage.js';
+import { listProjects, loadProject, saveProject, getValue, setValue, migrateLegacy, newProjectId } from './storage.js';
 import { newImageDialog, resizeDialog, exportDialog } from './dialogs.js';
+import { openLayersDialog } from './layerpanel.js';
+import { openProjectsDialog } from './projects.js';
 import { h, icon, openDialog, toast } from './ui.js';
 
 // Feste Grundpalette zum schnellen Auswählen
@@ -25,24 +27,29 @@ class App {
     this.doc = createDocument(64, 64);
     this.tool = 'pen';
     this.color = hexToColor('#000000');
-    this.settings = { exportName: 'sprite', recentColors: [] };
+    this.settings = { recentColors: [], showGrid: true };
+    this.project = null; // { id, name, exportName }
     this.history = new History(() => this.updateButtons());
     this.stroke = null;
     this.saveTimer = null;
   }
 
   async init() {
-    const saved = await loadAutosave();
-    if (saved) {
-      try {
-        this.doc = deserialize(saved);
-        if (saved.color) this.color = saved.color;
-        if (saved.tool) this.tool = saved.tool;
-        if (saved.settings) Object.assign(this.settings, saved.settings);
-      } catch (err) {
-        console.error('Autosave konnte nicht geladen werden', err);
+    try {
+      await migrateLegacy();
+      Object.assign(this.settings, (await getValue('settings')) || {});
+      this.color = (await getValue('color')) || this.color;
+      this.tool = (await getValue('tool')) || this.tool;
+      const currentId = await getValue('currentProject');
+      const loaded = currentId && (await loadProject(currentId));
+      if (loaded) {
+        this.doc = loaded.doc;
+        this.project = loaded.meta;
       }
+    } catch (err) {
+      console.error('Speicher konnte nicht gelesen werden', err);
     }
+    if (!this.project) this.project = { id: newProjectId(), name: 'Neues Sprite' };
     this.buildUI();
     this.view = new CanvasView(document.getElementById('canvas'), {
       getDoc: () => this.doc,
@@ -75,6 +82,10 @@ class App {
       return;
     }
     const layer = currentLayer(this.doc);
+    if (!layer.visible) {
+      toast(`„${layer.name}“ ist ausgeblendet – zum Zeichnen erst einblenden.`);
+      return;
+    }
     const value = this.tool === 'eraser' ? 0 : packColor(this.color);
     this.stroke = new Stroke(layer, this.doc.width, this.doc.height, value);
     this.stroke.to(p.x, p.y);
@@ -95,6 +106,10 @@ class App {
     if (this.strokeTool === 'fill' && this.pendingFill) {
       const p = this.pendingFill;
       this.pendingFill = null;
+      if (!currentLayer(this.doc).visible) {
+        toast('Die Ebene ist ausgeblendet – zum Füllen erst einblenden.');
+        return;
+      }
       const entry = floodFill(currentLayer(this.doc), this.doc.width, this.doc.height, p.x, p.y, packColor(this.color));
       if (entry) this.commit(entry, true);
       return;
@@ -173,11 +188,66 @@ class App {
 
   // ---------- Dokument ----------
 
-  newDocument(w, hh) {
-    this.doc = createDocument(w, hh);
+  /** Ein anderes Dokument anzeigen (Projektwechsel). */
+  showDocument(doc, meta) {
+    this.doc = doc;
+    this.project = meta;
+    this.stroke = null;
     this.history.clear();
     this.view.fit();
     this.view.invalidate();
+    this.updateAll();
+  }
+
+  async newProject(w, hh, name) {
+    await this.saveNow();
+    this.showDocument(createDocument(w, hh), { id: newProjectId(), name });
+    await this.saveNow();
+  }
+
+  /** Übernimmt ein importiertes Dokument als neues Projekt. */
+  async adoptProject(name, doc) {
+    await this.saveNow();
+    this.showDocument(doc, { id: newProjectId(), name });
+    await this.saveNow();
+  }
+
+  async openProject(id) {
+    await this.saveNow();
+    const loaded = await loadProject(id);
+    if (!loaded) return;
+    this.showDocument(loaded.doc, loaded.meta);
+    await this.saveNow();
+  }
+
+  /** Nach dem Löschen des offenen Projekts: neuestes öffnen oder ein leeres anlegen. */
+  async openFirstOrNew() {
+    const [first] = await listProjects();
+    if (first) {
+      const loaded = await loadProject(first.id);
+      this.showDocument(loaded.doc, loaded.meta);
+    } else {
+      this.showDocument(createDocument(64, 64), { id: newProjectId(), name: 'Neues Sprite' });
+    }
+    await this.saveNow();
+  }
+
+  /** Strukturänderung (Ebenen) in den Verlauf legen und anzeigen. */
+  commitStructure(entry) {
+    this.history.push(entry);
+    this.view.invalidate();
+    this.updateAll();
+    this.scheduleSave();
+  }
+
+  undoRedo(which) {
+    this.history[which]();
+    this.view.invalidate();
+    this.updateAll();
+    this.scheduleSave();
+  }
+
+  layerSelected() {
     this.updateAll();
     this.scheduleSave();
   }
@@ -208,11 +278,38 @@ class App {
     this.saveTimer = setTimeout(() => this.saveNow(), 800);
   }
 
+  /** Speichert Projekt und Einstellungen. Mehrfachaufrufe laufen nacheinander. */
   saveNow() {
     clearTimeout(this.saveTimer);
-    this.settings.showGrid = this.view?.showGrid;
-    saveAutosave(this.doc, { color: this.color, tool: this.tool, settings: this.settings })
-      .catch((err) => console.error('Autosave fehlgeschlagen', err));
+    if (this.view) this.settings.showGrid = this.view.showGrid;
+    const job = async () => {
+      this.project = await saveProject({ ...this.project, thumb: this.makeThumb() }, this.doc);
+      await Promise.all([
+        setValue('currentProject', this.project.id),
+        setValue('settings', this.settings),
+        setValue('color', this.color),
+        setValue('tool', this.tool),
+      ]);
+    };
+    this.saving = (this.saving || Promise.resolve()).then(job).catch((err) => console.error('Speichern fehlgeschlagen', err));
+    return this.saving;
+  }
+
+  makeThumb() {
+    const { width, height } = this.doc;
+    const src = document.createElement('canvas');
+    src.width = width;
+    src.height = height;
+    src.getContext('2d').putImageData(new ImageData(compositeFrame(this.doc, this.doc.frames[0]), width, height), 0, 0);
+    const scale = Math.max(1, Math.floor(96 / Math.max(width, height)));
+    const out = document.createElement('canvas');
+    out.width = Math.min(96, width * scale);
+    out.height = Math.min(96, height * scale);
+    const ctx = out.getContext('2d');
+    ctx.imageSmoothingEnabled = width * scale > 96 || height * scale > 96;
+    const f = Math.min(out.width / width, out.height / height);
+    ctx.drawImage(src, 0, 0, width * f, height * f);
+    return out.toDataURL('image/png');
   }
 
   // ---------- Oberfläche ----------
@@ -224,10 +321,13 @@ class App {
     $('btn-redo').append(icon('redo'));
     $('btn-grid').append(icon('grid'));
     $('btn-fit').append(icon('fit'));
+    $('btn-layers').append(icon('layers'));
+    $('btn-layers').addEventListener('click', () => openLayersDialog(this));
+    $('doc-info').addEventListener('click', () => openProjectsDialog(this));
     for (const t of ['pen', 'eraser', 'fill', 'picker']) document.querySelector(`[data-tool="${t}"]`).prepend(icon(t));
 
-    $('btn-undo').addEventListener('click', () => { this.history.undo(); this.view.invalidate(); this.scheduleSave(); });
-    $('btn-redo').addEventListener('click', () => { this.history.redo(); this.view.invalidate(); this.scheduleSave(); });
+    $('btn-undo').addEventListener('click', () => this.undoRedo('undo'));
+    $('btn-redo').addEventListener('click', () => this.undoRedo('redo'));
     $('btn-grid').addEventListener('click', () => {
       this.view.showGrid = !this.view.showGrid;
       this.view.requestRender();
@@ -249,8 +349,7 @@ class App {
       if (e.target.closest('input')) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
-        if (e.shiftKey) this.history.redo(); else this.history.undo();
-        this.view.invalidate();
+        this.undoRedo(e.shiftKey ? 'redo' : 'undo');
       } else {
         const tool = { b: 'pen', e: 'eraser', g: 'fill', i: 'picker' }[e.key];
         if (tool) { this.tool = tool; this.updateButtons(); }
@@ -264,7 +363,9 @@ class App {
     const dlg = openDialog({
       title: 'Menü',
       body: h('div', { class: 'menu' },
-        item('plus', 'Neues Bild …', () => newImageDialog(this)),
+        item('folder', 'Projekte …', () => openProjectsDialog(this)),
+        item('plus', 'Neues Projekt …', () => newImageDialog(this)),
+        item('layers', 'Ebenen …', () => openLayersDialog(this)),
         item('resize', 'Leinwandgröße ändern …', () => resizeDialog(this)),
         item('export', 'Als PNG exportieren …', () => exportDialog(this)),
         h('p', { class: 'hint version' }, `Pixel-Werkstatt · Version ${__APP_VERSION__}`)),
@@ -338,7 +439,10 @@ class App {
   }
 
   updateAll() {
-    document.getElementById('doc-info').textContent = `${this.doc.width} × ${this.doc.height} px`;
+    const layer = currentLayer(this.doc);
+    document.getElementById('doc-name').textContent = this.project.name;
+    document.getElementById('doc-size').textContent =
+      `${this.doc.width} × ${this.doc.height} px · ${layer.name}${layer.visible ? '' : ' (ausgeblendet)'}`;
     this.updateButtons();
   }
 }

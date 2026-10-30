@@ -1,4 +1,4 @@
-// Dialoge: Neues Bild, Leinwandgröße ändern, PNG-Export.
+// Dialoge: Neues Projekt, Leinwandgröße ändern, PNG-Export.
 
 import { MAX_SIZE, MIN_SIZE, isCleanScale, compositeFrame, currentFrame, scaleNearest } from './document.js';
 import { encodePNG } from './png.js';
@@ -20,6 +20,7 @@ function sizeFields(w, h0) {
 
 export function newImageDialog(app) {
   const { wf, hf, row } = sizeFields(app.doc.width, app.doc.height);
+  const nameInput = h('input', { type: 'text', value: 'Neues Sprite', spellcheck: 'false' });
   const presets = h('div', { class: 'chips' },
     PRESETS.map(([pw, ph]) =>
       h('button', {
@@ -29,9 +30,9 @@ export function newImageDialog(app) {
     ),
   );
   openDialog({
-    title: 'Neues Bild',
-    body: h('div', {}, row, h('p', { class: 'hint' }, 'Breite und Höhe sind unabhängig – tippe einfach eigene Werte ein. Schnellauswahl:'), presets,
-      h('p', { class: 'hint' }, 'Das aktuelle Bild wird dabei ersetzt. Exportiere es vorher, wenn du es behalten möchtest.')),
+    title: 'Neues Projekt',
+    body: h('div', {}, h('label', { class: 'field wide' }, h('span', {}, 'Name'), nameInput), row, h('p', { class: 'hint' }, 'Breite und Höhe sind unabhängig – tippe einfach eigene Werte ein. Schnellauswahl:'), presets,
+      h('p', { class: 'hint' }, 'Das aktuelle Projekt bleibt gespeichert – du findest es unter „Projekte“.')),
     actions: [
       { label: 'Abbrechen' },
       {
@@ -43,7 +44,7 @@ export function newImageDialog(app) {
             toast('Bitte gültige Größe eingeben.');
             return false;
           }
-          app.newDocument(w, hh);
+          app.newProject(w, hh, nameInput.value.trim() || 'Neues Sprite');
         },
       },
     ],
@@ -103,7 +104,7 @@ export function resizeDialog(app) {
 
 export function exportDialog(app) {
   const doc = app.doc;
-  const name = h('input', { type: 'text', value: app.settings.exportName || 'sprite', autocapitalize: 'off', spellcheck: 'false' });
+  const name = h('input', { type: 'text', value: app.project.exportName || sanitizeName(app.project.name), autocapitalize: 'off', spellcheck: 'false' });
   let factor = 1;
   const sizeInfo = h('p', { class: 'hint' });
   const updateInfo = () => {
@@ -126,7 +127,7 @@ export function exportDialog(app) {
 
   const build = async () => {
     const fileName = `${sanitizeName(name.value)}.png`;
-    app.settings.exportName = sanitizeName(name.value);
+    app.project.exportName = sanitizeName(name.value);
     app.scheduleSave();
     let pixels = compositeFrame(doc, currentFrame(doc));
     let w = doc.width, hh = doc.height;

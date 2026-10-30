@@ -35,7 +35,7 @@ export async function saveFile(fileName, bytes, mime = 'image/png') {
     const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
     const a = document.createElement('a');
     a.href = url;
-    a.download = fileName;
+    a.download = fileName.split('/').pop();
     document.body.appendChild(a);
     a.click();
     a.remove();

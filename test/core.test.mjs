@@ -147,3 +147,51 @@ test('Farbumrechnung HSV <-> RGB und Hex', async () => {
   assert.equal(colorToHex({ r: 255, g: 128, b: 0, a: 255 }), '#FF8000');
   assert.equal(colorToHex({ r: 255, g: 128, b: 0, a: 128 }), '#FF800080');
 });
+
+test('Ebenen: anlegen, verschieben, zusammenführen, löschen – alles rückgängig machbar', async () => {
+  const L = await import('../src/layers.js');
+  const doc = createDocument(2, 1);
+  doc.frames.push({ layers: [createLayer(2, 1, 'Ebene 1')] }); // zweiter Frame
+  doc.frames[0].layers[0].data.set([255,0,0,255, 0,0,0,0]);
+  const e1 = L.change(doc, () => L.addLayer(doc));
+  assert.equal(L.layerCount(doc), 2);
+  assert.equal(doc.frames[1].layers.length, 2, 'gilt für alle Frames');
+  assert.equal(doc.frames[0].layers[1].name, 'Ebene 2');
+  assert.equal(doc.layerIndex, 1);
+  doc.frames[0].layers[1].data.set([0,0,0,0, 0,255,0,255]);
+  const e2 = L.change(doc, () => L.mergeDown(doc));
+  assert.equal(L.layerCount(doc), 1);
+  assert.deepEqual([...doc.frames[0].layers[0].data], [255,0,0,255, 0,255,0,255]);
+  e2.undo();
+  assert.equal(L.layerCount(doc), 2);
+  assert.deepEqual([...doc.frames[0].layers[0].data], [255,0,0,255, 0,0,0,0]);
+  const e3 = L.change(doc, () => L.moveLayer(doc, -1));
+  assert.equal(doc.frames[0].layers[0].name, 'Ebene 2');
+  e3.undo();
+  assert.equal(doc.frames[0].layers[0].name, 'Ebene 1');
+  const e4 = L.change(doc, () => L.setLayerProps(doc, 1, { visible: false, opacity: 0.5 }));
+  assert.equal(doc.frames[1].layers[1].visible, false);
+  e4.undo();
+  assert.equal(doc.frames[1].layers[1].visible, true);
+  e1.undo();
+  assert.equal(L.layerCount(doc), 1);
+  assert.equal(L.change(doc, () => assert.equal(L.deleteLayer(doc), false)) !== null, true);
+});
+
+test('Projektdatei: Speichern und Laden ergibt exakt dasselbe Bild', async () => {
+  const { encodeProjectFile, decodeProjectFile } = await import('../src/storage.js');
+  const doc = createDocument(3, 2);
+  doc.frames[0].layers.push(createLayer(3, 2, 'Oben'));
+  doc.frames[0].layers[1].opacity = 0.4;
+  doc.frames[0].layers[1].visible = false;
+  doc.frames[0].layers[0].data.forEach((_, i, a) => { a[i] = (i * 37) % 256; });
+  const bytes = await encodeProjectFile('Held', doc);
+  const { name, doc: back } = await decodeProjectFile(bytes);
+  assert.equal(name, 'Held');
+  assert.equal(back.width, 3);
+  assert.equal(back.frames[0].layers[1].name, 'Oben');
+  assert.equal(back.frames[0].layers[1].opacity, 0.4);
+  assert.equal(back.frames[0].layers[1].visible, false);
+  assert.deepEqual([...back.frames[0].layers[0].data], [...doc.frames[0].layers[0].data]);
+  await assert.rejects(decodeProjectFile(new TextEncoder().encode('{"format":"anders"}')));
+});

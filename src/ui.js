@@ -30,6 +30,18 @@ const ICON_PATHS = {
   resize: 'M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7',
   export: 'M12 3v12M7 10l5 5 5-5M5 21h14',
   fill: 'm19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11ZM5 2l5 5M2 13h15M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4Z',
+  layers: 'm12 2 10 5-10 5L2 7zM2 12l10 5 10-5M2 17l10 5 10-5',
+  eye: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
+  eyeOff: 'M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2',
+  up: 'M12 19V5M5 12l7-7 7 7',
+  down: 'M12 5v14M19 12l-7 7-7-7',
+  merge: 'M8 4l4 4 4-4M12 8v9M5 20h14',
+  trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
+  copy: 'M9 9h11v11H9zM5 15H4V4h11v1',
+  edit: 'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4',
+  folder: 'M3 6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z',
+  save: 'M5 3h11l3 3v15H5zM8 3v5h7V3M8 21v-7h8v7',
+  upload: 'M12 21V9M7 14l5-5 5 5M5 3h14',
   picker: 'm2 22 1-1h3l9-9M3 21v-3l9-9M15 6l3.4-3.4a2.1 2.1 0 1 1 3 3L18 9l.4.4a2.1 2.1 0 1 1-3 3l-3.8-3.8a2.1 2.1 0 1 1 3-3l.4.4Z',
 };
 
@@ -100,6 +112,33 @@ export function confirmDialog(title, text, okLabel = 'OK', kind = 'primary') {
       if (!sheet.isConnected) {
         obs.disconnect();
         if (!answered) resolve(false);
+      }
+    }).observe(document.body, { childList: true });
+  });
+}
+
+/** Fragt einen Text ab. Liefert null bei Abbruch. */
+export function promptDialog(title, value = '', okLabel = 'OK') {
+  return new Promise((resolve) => {
+    let answered = false;
+    const input = h('input', { type: 'text', value, spellcheck: 'false' });
+    const finish = (v) => { answered = true; resolve(v); };
+    const { sheet, close } = openDialog({
+      title,
+      body: h('label', { class: 'field wide' }, input),
+      actions: [
+        { label: 'Abbrechen', onClick: () => finish(null) },
+        { label: okLabel, kind: 'primary', onClick: () => finish(input.value.trim() || null) },
+      ],
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { finish(input.value.trim() || null); close(); }
+    });
+    setTimeout(() => { input.focus(); input.select(); }, 50);
+    new MutationObserver((_, obs) => {
+      if (!sheet.isConnected) {
+        obs.disconnect();
+        if (!answered) resolve(null);
       }
     }).observe(document.body, { childList: true });
   });
