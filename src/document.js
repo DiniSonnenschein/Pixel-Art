@@ -23,6 +23,7 @@ export function createDocument(width, height) {
     frames: [{ layers: [createLayer(width, height, 'Ebene 1')] }],
     frameIndex: 0,
     layerIndex: 0,
+    fps: 8, // Abspielgeschwindigkeit der Animation
   };
 }
 

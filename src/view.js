@@ -21,6 +21,8 @@ export class CanvasView {
     this.pointers = new Map();
     this.mode = 'idle'; // idle | draw | gesture | blocked
     this.segments = [];
+    this.onionCanvases = [];
+    this.onion = false; // Nachbar-Frames blass anzeigen
     this.overlay = null; // z. B. Vorlage anpassen
     this.dirty = true;
     this.checker = this.makeChecker();
@@ -104,6 +106,13 @@ export class CanvasView {
 
     ctx.fillStyle = this.checker;
     ctx.fillRect(x, y, w, h);
+    // Onion Skin: vorheriger Frame deutlicher, nächster schwächer
+    ctx.imageSmoothingEnabled = false;
+    for (const { canvas, alpha } of this.onionCanvases) {
+      ctx.globalAlpha = alpha;
+      ctx.drawImage(canvas, x, y, w, h);
+    }
+    ctx.globalAlpha = 1;
     for (const seg of this.segments) {
       if (seg.canvas) {
         ctx.imageSmoothingEnabled = false;
@@ -160,6 +169,20 @@ export class CanvasView {
     }
     flush();
     this.segments = segments;
+
+    this.onionCanvases = [];
+    if (this.onion && doc.frames.length > 1) {
+      const pool2 = this.onionPool || (this.onionPool = [document.createElement('canvas'), document.createElement('canvas')]);
+      [[doc.frameIndex - 1, 0.35], [doc.frameIndex + 1, 0.15]].forEach(([fi, alpha], k) => {
+        const frame = doc.frames[fi];
+        if (!frame) return;
+        const c = pool2[k];
+        c.width = doc.width;
+        c.height = doc.height;
+        c.getContext('2d').putImageData(new ImageData(compositeFrame(doc, frame), doc.width, doc.height), 0, 0);
+        this.onionCanvases.push({ canvas: c, alpha });
+      });
+    }
     this.segmentsFor = doc;
     this.segmentsSize = `${doc.width}x${doc.height}`;
   }

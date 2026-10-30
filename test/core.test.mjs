@@ -189,3 +189,37 @@ test('Vorlage: wird nicht exportiert, bleibt beim Speichern erhalten, lässt sic
   assert.equal(fromFile.frames[0].layers[0].ref.sw, 30);
   assert.deepEqual([...fromFile.frames[0].layers[0].ref.bytes], [1, 2, 3, 4]);
 });
+
+test('Frames: neu, Kopie, verschieben, löschen und GameMaker-Streifen', async () => {
+  const F = await import('../src/frames.js');
+  const L = await import('../src/layers.js');
+  const doc = createDocument(2, 2);
+  doc.frames[0].layers[0].data.set([255,0,0,255], 0); // Frame 1: rot oben links
+  const e1 = L.change(doc, () => F.duplicateFrame(doc));
+  assert.equal(doc.frames.length, 2);
+  assert.equal(doc.frameIndex, 1);
+  assert.notEqual(doc.frames[1].layers[0], doc.frames[0].layers[0], 'eigene Pixel pro Frame');
+  doc.frames[1].layers[0].data.set([0,0,255,255], 12); // Frame 2: zusätzlich blau unten rechts
+  L.change(doc, () => F.addFrame(doc));
+  assert.equal(doc.frames.length, 3);
+  assert.ok(doc.frames[2].layers[0].data.every((v) => v === 0), 'neuer Frame ist leer');
+  L.change(doc, () => L.addLayer(doc));
+  assert.ok(doc.frames.every((f) => f.layers.length === 2), 'neue Ebene in allen Frames');
+  const strip = F.buildStrip(doc);
+  assert.equal(strip.width, 6);
+  assert.equal(strip.height, 2);
+  const px = (x, y) => [...strip.pixels.slice((y * 6 + x) * 4, (y * 6 + x) * 4 + 4)];
+  assert.deepEqual(px(0, 0), [255,0,0,255]);
+  assert.deepEqual(px(2, 0), [255,0,0,255]);
+  assert.deepEqual(px(3, 1), [0,0,255,255]);
+  assert.deepEqual(px(1, 1), [0,0,0,0]);
+  assert.deepEqual(px(4, 0), [0,0,0,0]);
+  doc.frameIndex = 2;
+  const e2 = L.change(doc, () => F.moveFrame(doc, -1));
+  assert.equal(doc.frameIndex, 1);
+  e2.undo();
+  assert.equal(doc.frameIndex, 2);
+  L.change(doc, () => F.deleteFrame(doc));
+  assert.equal(doc.frames.length, 2);
+  e1.undo();
+});

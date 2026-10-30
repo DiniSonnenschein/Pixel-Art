@@ -9,6 +9,7 @@ import { listProjects, loadProject, saveProject, getValue, setValue, migrateLega
 import { newImageDialog, resizeDialog, exportDialog } from './dialogs.js';
 import { openLayersDialog } from './layerpanel.js';
 import { openProjectsDialog } from './projects.js';
+import { FrameBar } from './framebar.js';
 import { change } from './layers.js';
 import { importImageFile, loadRefBitmaps, addReference, fitRef, sampleRef, refParams, RefTransform, createRefBar } from './reference.js';
 import { h, icon, openDialog, toast } from './ui.js';
@@ -61,6 +62,8 @@ class App {
       onStrokeCancel: () => this.strokeCancel(),
     });
     this.view.showGrid = this.settings.showGrid !== false;
+    this.view.onion = !!this.settings.onion;
+    this.frameBar = new FrameBar(this, document.getElementById('frame-bar'));
     loadRefBitmaps(this.doc).then(() => this.view.invalidate());
     this.updateAll();
 
@@ -152,6 +155,7 @@ class App {
   commit(entry, usedColor) {
     this.history.push(entry);
     this.view.invalidate();
+    this.frameBar.refreshCurrent();
     if (usedColor) this.addRecentColor(this.color);
     this.scheduleSave();
   }
@@ -542,8 +546,10 @@ class App {
   updateAll() {
     const layer = currentLayer(this.doc);
     document.getElementById('doc-name').textContent = this.project.name;
+    const frames = this.doc.frames.length > 1 ? ` · F${this.doc.frameIndex + 1}/${this.doc.frames.length}` : ' px';
     document.getElementById('doc-size').textContent =
-      `${this.doc.width} × ${this.doc.height} px · ${layer.name}${layer.visible ? '' : ' (ausgeblendet)'}`;
+      `${this.doc.width}×${this.doc.height}${frames} · ${layer.name}${layer.visible ? '' : ' (aus)'}`;
+    this.frameBar?.render();
     this.updateButtons();
   }
 }

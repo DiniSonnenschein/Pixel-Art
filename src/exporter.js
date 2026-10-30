@@ -57,21 +57,30 @@ export async function saveFile(fileName, bytes, mime = 'image/png') {
   return `Dokumente/${EXPORT_FOLDER}`;
 }
 
-export async function shareFile(fileName, bytes, mime = 'image/png') {
+export function shareFile(fileName, bytes, mime = 'image/png') {
+  return shareFiles([{ fileName, bytes }], mime);
+}
+
+/** Teilt eine oder mehrere Dateien über das Android-Teilen-Menü. */
+export async function shareFiles(files, mime = 'image/png') {
   if (!isNative) {
-    const file = new File([bytes], fileName, { type: mime });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ files: [file] });
+    const list = files.map((f) => new File([f.bytes], f.fileName, { type: mime }));
+    if (navigator.canShare && navigator.canShare({ files: list })) {
+      await navigator.share({ files: list });
     } else {
-      await saveFile(fileName, bytes, mime);
+      for (const f of files) await saveFile(f.fileName, f.bytes, mime);
     }
     return;
   }
-  const written = await Filesystem.writeFile({
-    path: `share/${fileName}`,
-    data: toBase64(bytes),
-    directory: Directory.Cache,
-    recursive: true,
-  });
-  await Share.share({ title: fileName, files: [written.uri] });
+  const uris = [];
+  for (const f of files) {
+    const written = await Filesystem.writeFile({
+      path: `share/${f.fileName}`,
+      data: toBase64(f.bytes),
+      directory: Directory.Cache,
+      recursive: true,
+    });
+    uris.push(written.uri);
+  }
+  await Share.share({ title: files.length === 1 ? files[0].fileName : `${files.length} Bilder`, files: uris });
 }

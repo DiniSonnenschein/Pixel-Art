@@ -14,7 +14,7 @@ genauso über die alte Version drüber, deine Zeichnung bleibt erhalten.
 
 Alle Versionen: [Releases](https://github.com/DiniSonnenschein/Pixel-Art/releases)
 
-## Funktionen (Stand: Schritt 4)
+## Funktionen (Stand: Schritt 5)
 
 - Leinwand in frei wählbarer Pixelgröße (1–1024 px), nachträglich skalierbar
 - Stift (Pixel Perfect), Radierer, Fülleimer, Pipette
@@ -24,6 +24,8 @@ Alle Versionen: [Releases](https://github.com/DiniSonnenschein/Pixel-Art/release
 - Ebenen: anlegen, kopieren, umsortieren, ein-/ausblenden, Deckkraft, umbenennen, zusammenführen, löschen
 - Vorlage-Bild zum Abpausen: eigene Ebene, scharf und halbtransparent angezeigt, nie exportiert;
   verschieben, skalieren (Ecken), Breite/Höhe (Kanten), zuschneiden; Pipette nimmt Farben aus der Vorlage
+- Animation: Frame-Leiste (neu, kopieren, verschieben, löschen), Onion Skin, Vorschau mit 1–60 FPS
+- Export als GameMaker-Streifen `name_stripN.png`, als Einzelbilder `name_0.png …` oder einzelner Frame
 - Mehrere Projekte, automatisch gespeichert; Sicherung als `.pxw`-Datei (mit allen Ebenen)
 - PNG-Export 1:1 (Pixel für Pixel) mit Transparenz, optional 2×/4×/8× vergrößert
   - Speichern landet in `Dokumente/Pixel-Werkstatt`, „Teilen …“ öffnet das Android-Teilen-Menü
@@ -34,7 +36,7 @@ Alle Versionen: [Releases](https://github.com/DiniSonnenschein/Pixel-Art/release
 2. ✅ Farbrad (Farbton, Sättigung, Helligkeit, Transparenz, Hex), Pipette, Fülleimer, letzte Farben
 3. ✅ Ebenen, Projekte speichern/laden
 4. ✅ Bilder als Vorlage einfügen, zuschneiden, skalieren
-5. Animation: Frames, Vorschau mit FPS, Onion Skin, GameMaker-Export (`name_stripN.png`)
+5. ✅ Animation: Frames, Vorschau mit FPS, Onion Skin, GameMaker-Export (`name_stripN.png`)
 6. Feinschliff
 
 ## Entwicklung

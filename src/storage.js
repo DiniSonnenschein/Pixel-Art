@@ -47,6 +47,7 @@ export function serialize(doc) {
     height: doc.height,
     frameIndex: doc.frameIndex,
     layerIndex: doc.layerIndex,
+    fps: doc.fps,
     frames: doc.frames.map((f) => ({
       layers: f.layers.map((l) => ({
         name: l.name,
@@ -66,6 +67,7 @@ export function deserialize(saved) {
     height,
     frameIndex: saved.frameIndex || 0,
     layerIndex: saved.layerIndex || 0,
+    fps: saved.fps || 8,
     frames: saved.frames.map((f) => ({
       layers: f.layers.map((l) => {
         const layer = createLayer(width, height, l.name);

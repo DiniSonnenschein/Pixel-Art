@@ -2,7 +2,8 @@
 
 import { MAX_SIZE, MIN_SIZE, isCleanScale, compositeFrame, currentFrame, scaleNearest } from './document.js';
 import { encodePNG } from './png.js';
-import { saveFile, shareFile, fileExists, sanitizeName } from './exporter.js';
+import { saveFile, shareFiles, fileExists, sanitizeName } from './exporter.js';
+import { buildStrip } from './frames.js';
 import { h, openDialog, confirmDialog, numberField, toast } from './ui.js';
 
 const PRESETS = [[16, 16], [32, 32], [64, 64], [128, 128], [256, 256], [32, 64], [64, 32], [64, 128], [128, 64]];
@@ -104,56 +105,89 @@ export function resizeDialog(app) {
 
 export function exportDialog(app) {
   const doc = app.doc;
+  const n = doc.frames.length;
   const name = h('input', { type: 'text', value: app.project.exportName || sanitizeName(app.project.name), autocapitalize: 'off', spellcheck: 'false' });
   let factor = 1;
-  const sizeInfo = h('p', { class: 'hint' });
-  const updateInfo = () => {
-    sizeInfo.textContent = `Ergebnis: ${doc.width * factor} × ${doc.height * factor} px, transparente Bereiche bleiben transparent.`;
-  };
-  const scaleChips = h('div', { class: 'chips' },
-    [1, 2, 4, 8].map((f) => {
+  let mode = n > 1 ? 'strip' : 'frame';
+  const info = h('p', { class: 'hint' });
+
+  const chipRow = (options, current, onPick) => {
+    const row = h('div', { class: 'chips' });
+    for (const [value, label] of options) {
       const b = h('button', {
-        class: `chip${f === 1 ? ' active' : ''}`,
+        class: `chip${value === current ? ' active' : ''}`,
         onClick: () => {
-          factor = f;
-          scaleChips.querySelectorAll('.chip').forEach((c) => c.classList.toggle('active', c === b));
-          updateInfo();
+          row.querySelectorAll('.chip').forEach((c) => c.classList.toggle('active', c === b));
+          onPick(value);
+          update();
         },
-      }, f === 1 ? '1× Original' : `${f}×`);
-      return b;
-    }),
-  );
-  updateInfo();
+      }, label);
+      row.append(b);
+    }
+    return row;
+  };
+
+  // Dateinamen je nach Variante; GameMaker zerlegt "name_stripN.png" beim Import automatisch
+  const fileNames = () => {
+    const base = sanitizeName(name.value);
+    if (mode === 'strip') return [`${base}_strip${n}.png`];
+    if (mode === 'frames') return doc.frames.map((_, i) => `${base}_${i}.png`);
+    return [n > 1 ? `${base}_${doc.frameIndex}.png` : `${base}.png`];
+  };
+
+  const update = () => {
+    const w = doc.width * factor, hh = doc.height * factor;
+    const names = fileNames();
+    const size = mode === 'strip' ? `${w * n} × ${hh}` : `${w} × ${hh}`;
+    info.textContent = mode === 'frames'
+      ? `${n} Dateien (${names[0]} … ${names[n - 1]}), je ${size} px.`
+      : `Datei: ${names[0]} · ${size} px.`;
+    info.textContent += ' Transparente Bereiche bleiben transparent.';
+  };
+
+  const framePixels = (frame) => {
+    let px = compositeFrame(doc, frame);
+    if (factor > 1) px = scaleNearest(px, doc.width, doc.height, doc.width * factor, doc.height * factor);
+    return px;
+  };
 
   const build = async () => {
-    const fileName = `${sanitizeName(name.value)}.png`;
     app.project.exportName = sanitizeName(name.value);
     app.scheduleSave();
-    let pixels = compositeFrame(doc, currentFrame(doc));
-    let w = doc.width, hh = doc.height;
-    if (factor > 1) {
-      pixels = scaleNearest(pixels, w, hh, w * factor, hh * factor);
-      w *= factor;
-      hh *= factor;
+    const names = fileNames();
+    const w = doc.width * factor, hh = doc.height * factor;
+    if (mode === 'strip') {
+      const strip = buildStrip(doc);
+      const px = factor > 1 ? scaleNearest(strip.pixels, strip.width, strip.height, strip.width * factor, strip.height * factor) : strip.pixels;
+      return [{ fileName: names[0], bytes: await encodePNG(strip.width * factor, strip.height * factor, px) }];
     }
-    return { fileName, bytes: await encodePNG(w, hh, pixels) };
+    if (mode === 'frames') {
+      return Promise.all(doc.frames.map(async (f, i) => ({ fileName: names[i], bytes: await encodePNG(w, hh, framePixels(f)) })));
+    }
+    return [{ fileName: names[0], bytes: await encodePNG(w, hh, framePixels(currentFrame(doc))) }];
   };
+
+  name.addEventListener('input', update);
+  update();
 
   openDialog({
     title: 'Als PNG exportieren',
     body: h('div', {},
-      h('label', { class: 'field wide' }, h('span', {}, 'Dateiname'), h('div', { class: 'suffix' }, name, h('span', {}, '.png'))),
+      h('label', { class: 'field wide' }, h('span', {}, 'Name'), name),
+      n > 1 ? h('p', { class: 'hint' }, 'Was exportieren?') : null,
+      n > 1 ? chipRow([['strip', `Streifen (${n} Frames)`], ['frames', 'Einzelbilder'], ['frame', `Nur Frame ${doc.frameIndex + 1}`]], mode, (v) => { mode = v; }) : null,
       h('p', { class: 'hint' }, 'Größe:'),
-      scaleChips,
-      sizeInfo,
-      h('p', { class: 'hint' }, '„1× Original“ ist Pixel für Pixel genau dein Bild – das brauchst du für GameMaker.')),
+      chipRow([[1, '1× Original'], [2, '2×'], [4, '4×'], [8, '8×']], 1, (v) => { factor = v; }),
+      info,
+      n > 1
+        ? h('p', { class: 'hint' }, `GameMaker: Den Streifen einfach importieren – an „_strip${n}“ erkennt GameMaker die ${n} Frames automatisch. Danach im Sprite-Editor ${doc.fps} FPS einstellen. Für GameMaker immer „1× Original“ nehmen.`)
+        : h('p', { class: 'hint' }, '„1× Original“ ist Pixel für Pixel genau dein Bild – das brauchst du für GameMaker.')),
     actions: [
       {
         label: 'Teilen …',
         onClick: async () => {
           try {
-            const { fileName, bytes } = await build();
-            await shareFile(fileName, bytes);
+            await shareFiles(await build());
           } catch (err) {
             if (!/cancel/i.test(String(err?.message))) toast(`Teilen fehlgeschlagen: ${err?.message || err}`);
           }
@@ -164,13 +198,17 @@ export function exportDialog(app) {
         kind: 'primary',
         onClick: async () => {
           try {
-            const { fileName, bytes } = await build();
-            if (await fileExists(fileName)) {
-              const ok = await confirmDialog('Datei existiert bereits', `„${fileName}“ gibt es schon. Überschreiben?`, 'Überschreiben', 'danger');
+            const files = await build();
+            const existing = [];
+            for (const f of files) if (await fileExists(f.fileName)) existing.push(f.fileName);
+            if (existing.length) {
+              const what = existing.length === 1 ? `„${existing[0]}“ gibt es schon.` : `${existing.length} dieser Dateien gibt es schon.`;
+              const ok = await confirmDialog('Datei existiert bereits', `${what} Überschreiben?`, 'Überschreiben', 'danger');
               if (!ok) return false;
             }
-            const where = await saveFile(fileName, bytes);
-            toast(`Gespeichert: ${where}/${fileName}`, 4000);
+            let where = '';
+            for (const f of files) where = await saveFile(f.fileName, f.bytes);
+            toast(files.length === 1 ? `Gespeichert: ${where}/${files[0].fileName}` : `${files.length} Bilder gespeichert in ${where}`, 4000);
           } catch (err) {
             toast(`Speichern fehlgeschlagen: ${err?.message || err}. Versuch es über „Teilen“.`, 5000);
             return false;
