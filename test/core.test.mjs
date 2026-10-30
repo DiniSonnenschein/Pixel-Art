@@ -119,3 +119,31 @@ test('Pixel Perfect löscht keine Pixel, die der Strich vorher schon gemalt hat'
   entry.undo();
   assert.ok(px.every((v) => v === 0));
 });
+
+test('Fülleimer füllt nur die zusammenhängende Fläche', async () => {
+  const { floodFill } = await import('../src/tools.js');
+  const layer = createLayer(5, 5);
+  const px = new Uint32Array(layer.data.buffer);
+  // senkrechte Wand bei x = 2
+  for (let y = 0; y < 5; y++) px[y * 5 + 2] = 0xff000000;
+  const entry = floodFill(layer, 5, 5, 0, 0, 0xff0000ff);
+  assert.equal([...px].filter((v) => v === 0xff0000ff).length, 10);
+  assert.equal(px[3], 0, 'rechts der Wand bleibt leer');
+  assert.equal(floodFill(layer, 5, 5, 0, 0, 0xff0000ff), null, 'gleiche Farbe -> nichts zu tun');
+  entry.undo();
+  assert.equal([...px].filter((v) => v === 0xff0000ff).length, 0);
+});
+
+test('Farbumrechnung HSV <-> RGB und Hex', async () => {
+  const { rgbToHsv, hsvToRgb, parseHex, colorToHex } = await import('../src/colorpicker.js');
+  for (const c of [{ r: 255, g: 0, b: 77 }, { r: 18, g: 200, b: 99 }, { r: 0, g: 0, b: 0 }, { r: 128, g: 128, b: 128 }]) {
+    const { h, s, v } = rgbToHsv(c);
+    assert.deepEqual(hsvToRgb(h, s, v), c);
+  }
+  assert.deepEqual(parseHex('#ff8000'), { r: 255, g: 128, b: 0, a: 255 });
+  assert.deepEqual(parseHex('f80'), { r: 255, g: 136, b: 0, a: 255 });
+  assert.deepEqual(parseHex('#FF800080'), { r: 255, g: 128, b: 0, a: 128 });
+  assert.equal(parseHex('xyz'), null);
+  assert.equal(colorToHex({ r: 255, g: 128, b: 0, a: 255 }), '#FF8000');
+  assert.equal(colorToHex({ r: 255, g: 128, b: 0, a: 128 }), '#FF800080');
+});

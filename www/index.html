@@ -22,9 +22,13 @@
     <canvas id="canvas"></canvas>
   </main>
 
+  <div id="recent-strip" class="recent-strip" hidden></div>
+
   <nav class="toolbar">
     <button class="tool-btn" data-tool="pen"><span class="label">Stift</span></button>
     <button class="tool-btn" data-tool="eraser"><span class="label">Radierer</span></button>
+    <button class="tool-btn" data-tool="fill"><span class="label">Füllen</span></button>
+    <button class="tool-btn" data-tool="picker"><span class="label">Pipette</span></button>
     <span class="spacer"></span>
     <button id="btn-color" class="color-btn" aria-label="Farbe wählen">
       <span class="color-chip-bg"><span id="color-chip" class="color-chip"></span></span>

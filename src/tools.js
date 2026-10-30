@@ -6,7 +6,37 @@ import { pixelEntry } from './history.js';
 export const TOOLS = {
   pen: { label: 'Stift' },
   eraser: { label: 'Radierer' },
+  fill: { label: 'Füllen' },
+  picker: { label: 'Pipette' },
 };
+
+/**
+ * Füllt die zusammenhängende Fläche gleicher Farbe (4er-Nachbarschaft,
+ * also nicht über Diagonalen hinweg) auf einer Ebene.
+ * @returns Verlaufseintrag oder null, wenn sich nichts ändert.
+ */
+export function floodFill(layer, width, height, x, y, value) {
+  if (x < 0 || y < 0 || x >= width || y >= height) return null;
+  const px = new Uint32Array(layer.data.buffer);
+  const start = y * width + x;
+  const target = px[start];
+  value >>>= 0;
+  if (target === value) return null;
+  const changed = [];
+  const stack = [start];
+  px[start] = value;
+  while (stack.length) {
+    const i = stack.pop();
+    changed.push(i);
+    const cx = i % width;
+    if (cx > 0 && px[i - 1] === target) { px[i - 1] = value; stack.push(i - 1); }
+    if (cx < width - 1 && px[i + 1] === target) { px[i + 1] = value; stack.push(i + 1); }
+    if (i >= width && px[i - width] === target) { px[i - width] = value; stack.push(i - width); }
+    if (i < width * (height - 1) && px[i + width] === target) { px[i + width] = value; stack.push(i + width); }
+  }
+  const indices = Uint32Array.from(changed);
+  return pixelEntry(layer, indices, new Uint32Array(indices.length).fill(target), new Uint32Array(indices.length).fill(value));
+}
 
 export class Stroke {
   constructor(layer, width, height, value) {

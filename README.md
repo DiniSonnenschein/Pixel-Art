@@ -14,10 +14,11 @@ genauso über die alte Version drüber, deine Zeichnung bleibt erhalten.
 
 Alle Versionen: [Releases](https://github.com/DiniSonnenschein/Pixel-Art/releases)
 
-## Funktionen (Stand: Schritt 1)
+## Funktionen (Stand: Schritt 2)
 
 - Leinwand in frei wählbarer Pixelgröße (1–1024 px), nachträglich skalierbar
-- Stift, Radierer, vorläufige Farbpalette
+- Stift (Pixel Perfect), Radierer, Fülleimer, Pipette
+- Farbrad mit Deckkraft, Hex- und RGBA-Eingabe, Palette, zuletzt benutzte Farben
 - Zoomen und Verschieben mit zwei Fingern, Raster (alle 8 px kräftiger)
 - Rückgängig / Wiederherstellen
 - Automatisches Speichern
@@ -27,7 +28,7 @@ Alle Versionen: [Releases](https://github.com/DiniSonnenschein/Pixel-Art/release
 ## Fahrplan
 
 1. ✅ Grundgerüst, Stift, Radierer, Undo, Zoom, Export, APK-Build
-2. Farbrad (Farbton, Sättigung, Helligkeit, Transparenz, Hex), Pipette, Fülleimer, letzte Farben
+2. ✅ Farbrad (Farbton, Sättigung, Helligkeit, Transparenz, Hex), Pipette, Fülleimer, letzte Farben
 3. Ebenen, Projekte speichern/laden
 4. Bilder als Vorlage einfügen, zuschneiden, skalieren
 5. Animation: Frames, Vorschau mit FPS, Onion Skin, GameMaker-Export (`name_stripN.png`)
