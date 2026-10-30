@@ -358,3 +358,28 @@ button:disabled { opacity: 0.35; cursor: default; }
 .project-info .hint { font-size: 12px; }
 .project-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .icon-btn.small { width: 36px; height: 40px; color: var(--muted); }
+
+/* ---------- Vorlage ---------- */
+.badge {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--accent);
+  font-size: 11px;
+  vertical-align: middle;
+}
+body.ref-editing .toolbar, body.ref-editing .recent-strip { display: none; }
+.ref-bar {
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ref-bar .hint { margin: 0; font-size: 12px; }
+.ref-bar-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.ref-info { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.ref-bar .chip[hidden] { display: none; }
+.ref-done { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; }

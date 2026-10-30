@@ -20,8 +20,8 @@ export class CanvasView {
     this.showGrid = true;
     this.pointers = new Map();
     this.mode = 'idle'; // idle | draw | gesture | blocked
-    this.offscreen = document.createElement('canvas');
-    this.composite = null;
+    this.segments = [];
+    this.overlay = null; // z. B. Vorlage anpassen
     this.dirty = true;
     this.checker = this.makeChecker();
 
@@ -93,14 +93,8 @@ export class CanvasView {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     if (!doc) return;
 
-    if (this.dirty || this.offscreen.width !== doc.width || this.offscreen.height !== doc.height) {
-      if (this.offscreen.width !== doc.width || this.offscreen.height !== doc.height) {
-        this.offscreen.width = doc.width;
-        this.offscreen.height = doc.height;
-        this.composite = null;
-      }
-      this.composite = compositeFrame(doc, currentFrame(doc), this.composite || undefined);
-      this.offscreen.getContext('2d').putImageData(new ImageData(this.composite, doc.width, doc.height), 0, 0);
+    if (this.dirty || this.segmentsFor !== doc || this.segmentsSize !== `${doc.width}x${doc.height}`) {
+      this.buildSegments(doc);
       this.dirty = false;
     }
 
@@ -110,14 +104,81 @@ export class CanvasView {
 
     ctx.fillStyle = this.checker;
     ctx.fillRect(x, y, w, h);
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(this.offscreen, x, y, w, h);
+    for (const seg of this.segments) {
+      if (seg.canvas) {
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(seg.canvas, x, y, w, h);
+      } else if (seg.layer.visible && seg.layer.ref.bitmap && !(this.overlay && this.overlay.layer === seg.layer)) {
+        // Vorlage in voller Bildqualität, auf die Leinwand beschnitten
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(x, y, w, h);
+        ctx.clip();
+        this.drawRef(seg.layer, seg.layer.opacity);
+        ctx.restore();
+      }
+    }
 
     if (this.showGrid && this.scale >= GRID_MIN_ZOOM) this.drawGrid(doc, x, y, w, h, dpr);
 
     ctx.strokeStyle = 'rgba(255,255,255,0.35)';
     ctx.lineWidth = 1 / dpr;
     ctx.strokeRect(x - 0.5 / dpr, y - 0.5 / dpr, w + 1 / dpr, h + 1 / dpr);
+
+    if (this.overlay) this.overlay.draw(ctx, this);
+  }
+
+  /**
+   * Teilt die Ebenen in Abschnitte: aufeinanderfolgende Pixel-Ebenen werden zu
+   * einem Bild verrechnet, Vorlage-Ebenen dazwischen einzeln gezeichnet.
+   */
+  buildSegments(doc) {
+    const segments = [];
+    let run = [];
+    const pool = this.canvasPool || (this.canvasPool = []);
+    let used = 0;
+    const flush = () => {
+      if (!run.length) return;
+      const c = pool[used] || (pool[used] = document.createElement('canvas'));
+      used++;
+      if (c.width !== doc.width || c.height !== doc.height) {
+        c.width = doc.width;
+        c.height = doc.height;
+      }
+      const pixels = compositeFrame(doc, { layers: run });
+      c.getContext('2d').putImageData(new ImageData(pixels, doc.width, doc.height), 0, 0);
+      segments.push({ canvas: c });
+      run = [];
+    };
+    for (const layer of currentFrame(doc).layers) {
+      if (layer.ref) {
+        flush();
+        segments.push({ layer });
+      } else {
+        run.push(layer);
+      }
+    }
+    flush();
+    this.segments = segments;
+    this.segmentsFor = doc;
+    this.segmentsSize = `${doc.width}x${doc.height}`;
+  }
+
+  /** Bildschirm-Rechteck (CSS-px) eines Rechtecks in Bild-Pixeln. */
+  toScreenRect(r) {
+    return { x: this.offsetX + r.x * this.scale, y: this.offsetY + r.y * this.scale, w: r.w * this.scale, h: r.h * this.scale };
+  }
+
+  /** Zeichnet den zugeschnittenen Teil einer Vorlage an ihrer Position. */
+  drawRef(layer, alpha) {
+    const { ctx } = this;
+    const ref = layer.ref;
+    const r = this.toScreenRect(ref);
+    ctx.globalAlpha = alpha;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(ref.bitmap, ref.sx, ref.sy, ref.sw, ref.sh, r.x, r.y, r.w, r.h);
+    ctx.globalAlpha = 1;
   }
 
   drawGrid(doc, x, y, w, h, dpr) {
@@ -168,12 +229,17 @@ export class CanvasView {
     this.canvas.setPointerCapture(e.pointerId);
     this.pointers.set(e.pointerId, this.localPoint(e));
 
-    if (this.pointers.size === 1 && this.mode === 'idle') {
+    if (this.pointers.size === 1 && this.mode === 'idle' && this.overlay) {
+      this.mode = 'overlay';
+      this.drawPointer = e.pointerId;
+      this.overlay.down(this.pointers.get(e.pointerId), this);
+    } else if (this.pointers.size === 1 && this.mode === 'idle') {
       this.mode = 'draw';
       this.drawPointer = e.pointerId;
       this.strokeStart = performance.now();
       this.cb.onStrokeStart(this.toDocPixel(this.pointers.get(e.pointerId)));
     } else if (this.pointers.size === 2) {
+      if (this.mode === 'overlay') this.overlay?.cancel(this);
       if (this.mode === 'draw') {
         if (performance.now() - this.strokeStart < CANCEL_STROKE_MS) this.cb.onStrokeCancel();
         else this.cb.onStrokeEnd();
@@ -189,13 +255,18 @@ export class CanvasView {
       for (const ev of events.length ? events : [e]) this.cb.onStrokeMove(this.toDocPixel(this.localPoint(ev)));
     }
     this.pointers.set(e.pointerId, this.localPoint(e));
+    if (this.mode === 'overlay' && e.pointerId === this.drawPointer) this.overlay?.move(this.localPoint(e), this);
     if (this.mode === 'gesture') this.updateGesture();
   }
 
   onUp(e, cancelled = false) {
     if (!this.pointers.has(e.pointerId)) return;
     this.pointers.delete(e.pointerId);
-    if (this.mode === 'draw' && e.pointerId === this.drawPointer) {
+    if (this.mode === 'overlay' && e.pointerId === this.drawPointer) {
+      if (cancelled) this.overlay?.cancel(this);
+      else this.overlay?.up(this);
+      this.mode = 'idle';
+    } else if (this.mode === 'draw' && e.pointerId === this.drawPointer) {
       if (cancelled) this.cb.onStrokeCancel();
       else this.cb.onStrokeEnd();
       this.mode = 'idle';

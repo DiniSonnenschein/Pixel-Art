@@ -71,13 +71,16 @@ export function duplicateLayer(doc) {
     copy.visible = src.visible;
     copy.opacity = src.opacity;
     copy.data.set(src.data);
+    if (src.ref) copy.ref = { ...src.ref };
     f.layers.splice(at + 1, 0, copy);
   }
   doc.layerIndex = at + 1;
 }
 
 export function deleteLayer(doc) {
-  if (layerCount(doc) <= 1) return false;
+  const layers = doc.frames[0].layers;
+  // Mindestens eine normale Ebene zum Zeichnen muss bleiben
+  if (!layers[doc.layerIndex].ref && layers.filter((l) => !l.ref).length <= 1) return false;
   for (const f of doc.frames) f.layers.splice(doc.layerIndex, 1);
   doc.layerIndex = Math.min(doc.layerIndex, layerCount(doc) - 1);
   return true;
@@ -99,6 +102,8 @@ export function moveLayer(doc, dir) {
 export function mergeDown(doc) {
   const at = doc.layerIndex;
   if (at === 0) return false;
+  const layers = doc.frames[0].layers;
+  if (layers[at].ref || layers[at - 1].ref) return false; // Vorlagen lassen sich nicht vereinen
   for (const f of doc.frames) {
     const below = f.layers[at - 1], top = f.layers[at];
     const merged = compositeFrame(doc, {

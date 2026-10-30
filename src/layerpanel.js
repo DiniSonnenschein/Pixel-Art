@@ -8,7 +8,18 @@ function thumbnail(layer, width, height) {
   // Auf 44 px Kantenlänge hochskalieren, Seitenverhältnis bleibt erhalten
   const f = 44 / Math.max(width, height);
   const c = h('canvas', { class: 'layer-thumb', width, height, style: `width:${width * f}px;height:${height * f}px` });
-  c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(layer.data), width, height), 0, 0);
+  const ctx = c.getContext('2d');
+  if (layer.ref) {
+    // Vorlage: zugeschnittenes Bild an seiner Position
+    const r = layer.ref;
+    if (r.bitmap) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(r.bitmap, r.sx, r.sy, r.sw, r.sh, r.x, r.y, r.w, r.h);
+    }
+    c.style.imageRendering = 'auto';
+  } else {
+    ctx.putImageData(new ImageData(new Uint8ClampedArray(layer.data), width, height), 0, 0);
+  }
   return c;
 }
 
@@ -48,7 +59,7 @@ export function openLayersDialog(app) {
           },
         }, icon(layer.visible ? 'eye' : 'eyeOff')),
         h('span', { class: 'thumb-bg' }, thumbnail(layer, doc.width, doc.height)),
-        h('span', { class: 'layer-name' }, layer.name),
+        h('span', { class: 'layer-name' }, layer.name, layer.ref ? h('span', { class: 'badge' }, 'Vorlage') : null),
         layer.opacity < 1 ? h('span', { class: 'layer-op' }, `${Math.round(layer.opacity * 100)} %`) : null,
       ),
     ));
@@ -63,14 +74,17 @@ export function openLayersDialog(app) {
       actionBtn('copy', 'Kopie', () => run(() => L.duplicateLayer(doc))),
       actionBtn('up', 'Hoch', () => run(() => L.moveLayer(doc, 1)), doc.layerIndex >= count - 1),
       actionBtn('down', 'Runter', () => run(() => L.moveLayer(doc, -1)), doc.layerIndex === 0),
-      actionBtn('merge', 'Vereinen', () => run(() => L.mergeDown(doc)), doc.layerIndex === 0),
+      actionBtn('merge', 'Vereinen', () => run(() => L.mergeDown(doc)),
+        doc.layerIndex === 0 || !!cur.ref || !!layers[doc.layerIndex - 1].ref),
       actionBtn('edit', 'Name', async () => {
         const name = await promptDialog('Ebene umbenennen', cur.name);
         if (name) run(() => L.setLayerProps(doc, doc.layerIndex, { name }));
       }),
+      actionBtn('image', 'Vorlage', () => { dlg.close(); app.pickReferenceImage(); }),
+      cur.ref ? actionBtn('move', 'Anpassen', () => { dlg.close(); app.startRefTransform(cur); }) : null,
       actionBtn('trash', 'Löschen', async () => {
-        if (count <= 1) {
-          toast('Die letzte Ebene kann nicht gelöscht werden.');
+        if (count <= 1 || (!cur.ref && layers.filter((l) => !l.ref).length <= 1)) {
+          toast('Die letzte Zeichen-Ebene kann nicht gelöscht werden.');
           return;
         }
         if (await confirmDialog('Ebene löschen', `„${cur.name}“ löschen? (Rückgängig ist möglich.)`, 'Löschen', 'danger')) {
@@ -98,7 +112,7 @@ export function openLayersDialog(app) {
   });
 
   render();
-  openDialog({
+  const dlg = openDialog({
     title: 'Ebenen',
     body: h('div', {},
       list,

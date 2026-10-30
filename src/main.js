@@ -9,6 +9,8 @@ import { listProjects, loadProject, saveProject, getValue, setValue, migrateLega
 import { newImageDialog, resizeDialog, exportDialog } from './dialogs.js';
 import { openLayersDialog } from './layerpanel.js';
 import { openProjectsDialog } from './projects.js';
+import { change } from './layers.js';
+import { importImageFile, loadRefBitmaps, addReference, fitRef, sampleRef, refParams, RefTransform, createRefBar } from './reference.js';
 import { h, icon, openDialog, toast } from './ui.js';
 
 // Feste Grundpalette zum schnellen Auswählen
@@ -59,6 +61,7 @@ class App {
       onStrokeCancel: () => this.strokeCancel(),
     });
     this.view.showGrid = this.settings.showGrid !== false;
+    loadRefBitmaps(this.doc).then(() => this.view.invalidate());
     this.updateAll();
 
     document.addEventListener('visibilitychange', () => {
@@ -82,6 +85,10 @@ class App {
       return;
     }
     const layer = currentLayer(this.doc);
+    if (layer.ref) {
+      toast('Das ist die Vorlage – zum Zeichnen eine normale Ebene wählen.');
+      return;
+    }
     if (!layer.visible) {
       toast(`„${layer.name}“ ist ausgeblendet – zum Zeichnen erst einblenden.`);
       return;
@@ -106,6 +113,10 @@ class App {
     if (this.strokeTool === 'fill' && this.pendingFill) {
       const p = this.pendingFill;
       this.pendingFill = null;
+      if (currentLayer(this.doc).ref) {
+        toast('Das ist die Vorlage – zum Füllen eine normale Ebene wählen.');
+        return;
+      }
       if (!currentLayer(this.doc).visible) {
         toast('Die Ebene ist ausgeblendet – zum Füllen erst einblenden.');
         return;
@@ -152,6 +163,13 @@ class App {
     const comp = compositeFrame(this.doc, currentFrame(this.doc));
     const i = (p.y * width + p.x) * 4;
     this.picked = { r: comp[i], g: comp[i + 1], b: comp[i + 2], a: comp[i + 3] };
+    if (this.picked.a === 0) {
+      // Nichts gezeichnet: Farbe aus einer sichtbaren Vorlage nehmen (oberste zuerst)
+      for (const layer of [...currentFrame(this.doc).layers].reverse()) {
+        const c = layer.ref && layer.visible && sampleRef(layer, p.x + 0.5, p.y + 0.5);
+        if (c) { this.picked = c; break; }
+      }
+    }
     if (this.picked.a > 0) this.color = { ...this.picked };
     this.updateButtons();
   }
@@ -190,6 +208,7 @@ class App {
 
   /** Ein anderes Dokument anzeigen (Projektwechsel). */
   showDocument(doc, meta) {
+    this.endRefTransform(false);
     this.doc = doc;
     this.project = meta;
     this.stroke = null;
@@ -197,6 +216,80 @@ class App {
     this.view.fit();
     this.view.invalidate();
     this.updateAll();
+    loadRefBitmaps(doc).then(() => this.view.invalidate());
+  }
+
+  // ---------- Vorlagen ----------
+
+  pickReferenceImage() {
+    const input = h('input', { type: 'file', accept: 'image/*', style: 'display:none' });
+    input.addEventListener('change', async () => {
+      const file = input.files[0];
+      input.remove();
+      if (!file) return;
+      try {
+        const img = await importImageFile(file);
+        let layer;
+        const entry = change(this.doc, () => { layer = addReference(this.doc, img); });
+        this.commitStructure(entry);
+        this.startRefTransform(layer);
+      } catch (err) {
+        toast(`Bild konnte nicht geladen werden: ${err?.message || err}`, 5000);
+      }
+    });
+    document.body.append(input);
+    input.click();
+  }
+
+  startRefTransform(layer) {
+    this.endRefTransform(false);
+    if (!layer.visible) layer.visible = true;
+    const apply = (params) => {
+      Object.assign(layer.ref, params);
+      this.view.requestRender();
+      this.refBar?.update();
+      this.scheduleSave();
+    };
+    const overlay = new RefTransform(layer, {
+      onChange: () => this.refBar?.update(),
+      onCommit: (before, after) => {
+        this.history.push({ undo: () => apply(before), redo: () => apply(after) });
+        this.scheduleSave();
+      },
+    });
+    const commitParams = (fn) => {
+      const before = refParams(layer.ref);
+      fn();
+      overlay.onCommit(before, refParams(layer.ref));
+      this.view.requestRender();
+      this.refBar.update();
+    };
+    this.refBar = createRefBar({
+      overlay,
+      onRender: () => this.view.requestRender(),
+      onFit: () => commitParams(() => fitRef(layer.ref, this.doc.width, this.doc.height)),
+      onResetCrop: () => commitParams(() => {
+        const r = layer.ref;
+        const kx = r.w / r.sw, ky = r.h / r.sh;
+        Object.assign(r, { x: r.x - r.sx * kx, y: r.y - r.sy * ky, w: r.imgW * kx, h: r.imgH * ky, sx: 0, sy: 0, sw: r.imgW, sh: r.imgH });
+      }),
+      onDone: () => this.endRefTransform(),
+    });
+    document.body.append(this.refBar.bar);
+    document.body.classList.add('ref-editing');
+    this.view.overlay = overlay;
+    this.view.invalidate();
+  }
+
+  endRefTransform(save = true) {
+    if (!this.refBar) return;
+    this.refBar.bar.remove();
+    this.refBar = null;
+    document.body.classList.remove('ref-editing');
+    this.view.overlay = null;
+    this.view.invalidate();
+    this.updateAll();
+    if (save) this.scheduleSave();
   }
 
   async newProject(w, hh, name) {
@@ -258,10 +351,17 @@ class App {
     const layers = allLayers(doc);
     const before = layers.map((l) => l.data);
     const after = layers.map((l) => scaleNearest(l.data, oldW, oldH, w, hh));
+    const fx = w / oldW, fy = hh / oldH;
+    const refsBefore = layers.map((l) => l.ref && refParams(l.ref));
+    const refsAfter = layers.map((l) => l.ref && { ...refParams(l.ref), x: l.ref.x * fx, y: l.ref.y * fy, w: l.ref.w * fx, h: l.ref.h * fy });
     const apply = (width, height, datas) => {
       doc.width = width;
       doc.height = height;
-      layers.forEach((l, i) => { l.data = datas[i]; });
+      const refs = datas === after ? refsAfter : refsBefore;
+      layers.forEach((l, i) => {
+        l.data = datas[i];
+        if (l.ref) Object.assign(l.ref, refs[i]);
+      });
       this.view.fit();
       this.view.invalidate();
       this.updateAll();
@@ -366,6 +466,7 @@ class App {
         item('folder', 'Projekte …', () => openProjectsDialog(this)),
         item('plus', 'Neues Projekt …', () => newImageDialog(this)),
         item('layers', 'Ebenen …', () => openLayersDialog(this)),
+        item('image', 'Vorlage-Bild einfügen …', () => this.pickReferenceImage()),
         item('resize', 'Leinwandgröße ändern …', () => resizeDialog(this)),
         item('export', 'Als PNG exportieren …', () => exportDialog(this)),
         h('p', { class: 'hint version' }, `Pixel-Werkstatt · Version ${__APP_VERSION__}`)),

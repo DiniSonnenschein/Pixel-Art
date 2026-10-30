@@ -167,3 +167,25 @@ test('Projektdatei: Speichern und Laden ergibt exakt dasselbe Bild', async () =>
   assert.deepEqual([...back.frames[0].layers[0].data], [...doc.frames[0].layers[0].data]);
   await assert.rejects(decodeProjectFile(new TextEncoder().encode('{"format":"anders"}')));
 });
+
+test('Vorlage: wird nicht exportiert, bleibt beim Speichern erhalten, lässt sich nicht vereinen', async () => {
+  const L = await import('../src/layers.js');
+  const { addReference } = await import('../src/reference.js');
+  const { encodeProjectFile, decodeProjectFile, serialize, deserialize } = await import('../src/storage.js');
+  const doc = createDocument(10, 5);
+  const img = { bytes: new Uint8Array([1, 2, 3, 4]), mime: 'image/png', imgW: 40, imgH: 40, bitmap: null };
+  const ref = addReference(doc, img);
+  assert.equal(doc.frames[0].layers[0], ref);
+  assert.equal(doc.layerIndex, 1, 'vorher gewählte Ebene bleibt gewählt');
+  // quadratisches Bild in 10×5-Leinwand eingepasst: 5×5, mittig
+  assert.deepEqual([ref.ref.x, ref.ref.y, ref.ref.w, ref.ref.h], [2.5, 0, 5, 5]);
+  assert.ok(compositeFrame(doc, doc.frames[0]).every((v) => v === 0), 'Vorlage ist nicht im Export');
+  assert.equal(L.mergeDown(doc), false);
+  ref.ref.sx = 4; ref.ref.sw = 30;
+  const back = deserialize(serialize(doc));
+  assert.deepEqual([...back.frames[0].layers[0].ref.bytes], [1, 2, 3, 4]);
+  assert.equal(back.frames[0].layers[0].ref.sx, 4);
+  const { doc: fromFile } = await decodeProjectFile(await encodeProjectFile('x', doc));
+  assert.equal(fromFile.frames[0].layers[0].ref.sw, 30);
+  assert.deepEqual([...fromFile.frames[0].layers[0].ref.bytes], [1, 2, 3, 4]);
+});

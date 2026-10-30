@@ -53,6 +53,7 @@ export function serialize(doc) {
         visible: l.visible,
         opacity: l.opacity,
         data: l.data.slice().buffer,
+        ...(l.ref ? { ref: serializeRef(l.ref) } : {}),
       })),
     })),
   };
@@ -71,10 +72,16 @@ export function deserialize(saved) {
         layer.visible = l.visible;
         layer.opacity = l.opacity;
         layer.data.set(new Uint8ClampedArray(l.data));
+        if (l.ref) layer.ref = { ...l.ref, bytes: new Uint8Array(l.ref.bytes), bitmap: null };
         return layer;
       }),
     })),
   };
+}
+
+function serializeRef(ref) {
+  const { bitmap, sampleCtx, bytes, ...rest } = ref;
+  return { ...rest, bytes: bytes.slice().buffer };
 }
 
 export function newProjectId() {
@@ -166,7 +173,11 @@ export async function encodeProjectFile(name, doc) {
     ...s,
     name,
     frames: s.frames.map((f) => ({
-      layers: f.layers.map((l) => ({ ...l, data: toBase64(new Uint8Array(l.data)) })),
+      layers: f.layers.map((l) => ({
+        ...l,
+        data: toBase64(new Uint8Array(l.data)),
+        ...(l.ref ? { ref: { ...l.ref, bytes: toBase64(new Uint8Array(l.ref.bytes)) } } : {}),
+      })),
     })),
   });
   return pipe(new TextEncoder().encode(json), new CompressionStream('gzip'));
@@ -186,7 +197,8 @@ export async function decodeProjectFile(bytes) {
     layers: f.layers.map((l) => {
       const data = fromBase64(l.data);
       if (data.length !== size) throw new Error('Projektdatei ist beschädigt');
-      return { ...l, data: data.buffer };
+      const ref = l.ref ? { ...l.ref, bytes: fromBase64(l.ref.bytes).buffer } : undefined;
+      return { ...l, data: data.buffer, ref };
     }),
   }));
   return { name: obj.name || 'Importiert', doc: deserialize(obj) };
