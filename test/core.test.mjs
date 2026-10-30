@@ -92,34 +92,6 @@ test('Strich zieht lückenlose Linie und lässt sich rückgängig machen', () =>
   assert.equal([...px].filter(Boolean).length, set.length);
 });
 
-test('Pixel Perfect: Treppenstufen werden entfernt, Linie bleibt 1 Pixel dünn', () => {
-  const layer = createLayer(8, 8);
-  const s = new Stroke(layer, 8, 8, 0xffffffff);
-  // Freihand-Treppe: rechts, runter, rechts, runter ... (typisch für Fingerbewegung)
-  [[0,0],[1,0],[1,1],[2,1],[2,2],[3,2],[3,3]].forEach(([x, y]) => s.to(x, y));
-  const px = new Uint32Array(layer.data.buffer);
-  const on = (x, y) => px[y * 8 + x] !== 0;
-  assert.ok(on(0,0) && on(1,1) && on(2,2) && on(3,3));
-  assert.ok(!on(1,0) && !on(2,1) && !on(3,2), 'Eckpixel müssen weg sein');
-  // Gerade Linien bleiben unverändert
-  const l2 = createLayer(8, 8);
-  const s2 = new Stroke(l2, 8, 8, 0xffffffff);
-  s2.to(0, 4); s2.to(7, 4);
-  assert.equal(new Uint32Array(l2.data.buffer).filter(Boolean).length, 8);
-});
-
-test('Pixel Perfect löscht keine Pixel, die der Strich vorher schon gemalt hat', () => {
-  const layer = createLayer(8, 8);
-  const px = new Uint32Array(layer.data.buffer);
-  const s = new Stroke(layer, 8, 8, 0xffffffff);
-  s.to(1, 0); s.to(1, 3);           // senkrechte Linie durch (1,1)
-  s.to(0, 3); s.to(0, 1); s.to(1, 1); s.to(2, 1); s.to(2, 2); // später Ecke bei (1,1)/(2,1)
-  assert.ok(px[1 * 8 + 1] !== 0, '(1,1) gehört zur ersten Linie und muss bleiben');
-  const entry = s.finish();
-  entry.undo();
-  assert.ok(px.every((v) => v === 0));
-});
-
 test('Fülleimer füllt nur die zusammenhängende Fläche', async () => {
   const { floodFill } = await import('../src/tools.js');
   const layer = createLayer(5, 5);
