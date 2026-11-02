@@ -3,7 +3,7 @@
 
 import { listProjects, loadProject, saveProject, saveProjectMeta, deleteProject, newProjectId,
   encodeProjectFile, decodeProjectFile, PROJECT_EXT } from './storage.js';
-import { saveFile, shareFile, fileExists, sanitizeName } from './exporter.js';
+import { saveFile, shareFile, fileExists, sanitizeName, pickFile } from './exporter.js';
 import { newImageDialog } from './dialogs.js';
 import { h, icon, openDialog, promptDialog, confirmDialog, toast } from './ui.js';
 
@@ -64,20 +64,18 @@ export async function openProjectsDialog(app) {
     }));
   };
 
-  const fileInput = h('input', { type: 'file', style: 'display:none' });
-  fileInput.addEventListener('change', async () => {
-    const file = fileInput.files[0];
-    fileInput.value = '';
-    if (!file) return;
+  const openFile = async () => {
     try {
-      const { name, doc } = await decodeProjectFile(new Uint8Array(await file.arrayBuffer()));
+      const picked = await pickFile();
+      if (!picked) return;
+      const { name, doc } = await decodeProjectFile(picked.bytes);
       await app.adoptProject(name, doc);
       toast(`Projekt „${name}“ geöffnet`);
       dlg.close();
     } catch (err) {
-      toast(`Datei konnte nicht geöffnet werden: ${err.message}`, 5000);
+      toast(`Datei konnte nicht geöffnet werden: ${err?.message || err}`, 5000);
     }
-  });
+  };
 
   const backup = async (share) => {
     await app.saveNow();
@@ -104,9 +102,8 @@ export async function openProjectsDialog(app) {
     body: h('div', {},
       h('div', { class: 'chips' },
         h('button', { class: 'chip', onClick: () => { dlg.close(); newImageDialog(app); } }, '+ Neues Projekt'),
-        h('button', { class: 'chip', onClick: () => fileInput.click() }, 'Datei öffnen …')),
+        h('button', { class: 'chip', onClick: openFile }, 'Datei öffnen …')),
       list,
-      fileInput,
       h('p', { class: 'hint section' }, `Aktuelles Projekt „${app.project.name}“ als Datei sichern (enthält alle Ebenen):`),
       h('div', { class: 'chips' },
         h('button', { class: 'chip', onClick: () => backup(false) }, 'In Dokumente speichern'),

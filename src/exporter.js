@@ -4,6 +4,7 @@
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+import { FilePicker } from '@capawesome/capacitor-file-picker';
 
 export const EXPORT_FOLDER = 'Pixel-Werkstatt';
 const isNative = Capacitor.isNativePlatform();
@@ -83,4 +84,54 @@ export async function shareFiles(files, mime = 'image/png') {
     uris.push(written.uri);
   }
   await Share.share({ title: files.length === 1 ? files[0].fileName : `${files.length} Bilder`, files: uris });
+}
+
+function fromBase64(text) {
+  const bin = atob(text);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+/**
+ * Lässt eine Datei auswählen und liest sie sofort vollständig ein.
+ * In der Android-App übernimmt das die native Auswahl: Über den Web-Dialog
+ * verweigert Android bei Galerie-Bildern oft das spätere Lesen
+ * ("NotReadableError").
+ * @returns {Promise<{ bytes: Uint8Array, mime: string, name: string } | null>} null bei Abbruch
+ */
+export async function pickFile({ images = false } = {}) {
+  if (isNative) {
+    try {
+      const result = images
+        ? await FilePicker.pickImages({ limit: 1, readData: true })
+        : await FilePicker.pickFiles({ limit: 1, readData: true });
+      const f = result.files[0];
+      if (!f || !f.data) return null;
+      return { bytes: fromBase64(f.data), mime: f.mimeType || '', name: f.name || '' };
+    } catch (err) {
+      if (/cancel/i.test(String(err?.message))) return null;
+      throw err;
+    }
+  }
+  return new Promise((resolve, reject) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    if (images) input.accept = 'image/*';
+    input.style.display = 'none';
+    input.addEventListener('change', async () => {
+      const file = input.files[0];
+      try {
+        // sofort lesen, solange die Datei sicher zugänglich ist
+        resolve(file ? { bytes: new Uint8Array(await file.arrayBuffer()), mime: file.type, name: file.name } : null);
+      } catch (err) {
+        reject(err);
+      } finally {
+        input.remove();
+      }
+    });
+    input.addEventListener('cancel', () => { input.remove(); resolve(null); });
+    document.body.append(input);
+    input.click();
+  });
 }

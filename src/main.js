@@ -10,6 +10,7 @@ import { newImageDialog, resizeDialog, exportDialog } from './dialogs.js';
 import { openLayersDialog } from './layerpanel.js';
 import { openProjectsDialog } from './projects.js';
 import { FrameBar } from './framebar.js';
+import { pickFile } from './exporter.js';
 import { change } from './layers.js';
 import { importImageFile, loadRefBitmaps, addReference, fitRef, sampleRef, refParams, RefTransform, createRefBar } from './reference.js';
 import { h, icon, openDialog, toast } from './ui.js';
@@ -225,24 +226,18 @@ class App {
 
   // ---------- Vorlagen ----------
 
-  pickReferenceImage() {
-    const input = h('input', { type: 'file', accept: 'image/*', style: 'display:none' });
-    input.addEventListener('change', async () => {
-      const file = input.files[0];
-      input.remove();
-      if (!file) return;
-      try {
-        const img = await importImageFile(file);
-        let layer;
-        const entry = change(this.doc, () => { layer = addReference(this.doc, img); });
-        this.commitStructure(entry);
-        this.startRefTransform(layer);
-      } catch (err) {
-        toast(`Bild konnte nicht geladen werden: ${err?.message || err}`, 5000);
-      }
-    });
-    document.body.append(input);
-    input.click();
+  async pickReferenceImage() {
+    try {
+      const picked = await pickFile({ images: true });
+      if (!picked) return;
+      const img = await importImageFile(picked);
+      let layer;
+      const entry = change(this.doc, () => { layer = addReference(this.doc, img); });
+      this.commitStructure(entry);
+      this.startRefTransform(layer);
+    } catch (err) {
+      toast(`Bild konnte nicht geladen werden: ${err?.message || err}`, 6000);
+    }
   }
 
   startRefTransform(layer) {

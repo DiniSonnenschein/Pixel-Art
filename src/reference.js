@@ -11,11 +11,10 @@ const MIN_SIZE = 0.5; // kleinste Vorlagengröße in Bild-Pixeln
 
 // ---------- Import und Laden ----------
 
-/** Liest eine Bilddatei ein und verkleinert sehr große Fotos. */
-export async function importImageFile(file) {
-  let bitmap = await createImageBitmap(file);
-  let bytes = new Uint8Array(await file.arrayBuffer());
-  let mime = file.type || 'image/png';
+/** Erstellt die Vorlage aus eingelesenen Bilddaten und verkleinert sehr große Fotos. */
+export async function importImageFile({ bytes, mime }) {
+  mime = mime || 'image/png';
+  let bitmap = await createImageBitmap(new Blob([bytes], { type: mime }));
   const big = Math.max(bitmap.width, bitmap.height);
   if (big > MAX_IMPORT || !/^image\/(png|jpeg|webp|gif)$/.test(mime)) {
     const f = Math.min(1, MAX_IMPORT / big);
