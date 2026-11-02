@@ -2,6 +2,7 @@
 // Pixels, damit er rückgängig gemacht oder abgebrochen werden kann.
 
 import { pixelEntry } from './history.js';
+import { blendOver } from './document.js';
 
 export const TOOLS = {
   pen: { label: 'Stift' },
@@ -15,12 +16,13 @@ export const TOOLS = {
  * also nicht über Diagonalen hinweg) auf einer Ebene.
  * @returns Verlaufseintrag oder null, wenn sich nichts ändert.
  */
-export function floodFill(layer, width, height, x, y, value) {
+export function floodFill(layer, width, height, x, y, value, blend = false) {
   if (x < 0 || y < 0 || x >= width || y >= height) return null;
   const px = new Uint32Array(layer.data.buffer);
   const start = y * width + x;
   const target = px[start];
-  value >>>= 0;
+  // Die Fläche hat überall dieselbe Farbe, also auch dasselbe Mischergebnis
+  value = blend ? blendOver(value, target) : value >>> 0;
   if (target === value) return null;
   const changed = [];
   const stack = [start];
@@ -39,11 +41,13 @@ export function floodFill(layer, width, height, x, y, value) {
 }
 
 export class Stroke {
-  constructor(layer, width, height, value) {
+  /** blend = true: Farbe legt sich über vorhandene Pixel statt sie zu ersetzen. */
+  constructor(layer, width, height, value, blend = false) {
     this.layer = layer;
     this.width = width;
     this.height = height;
     this.value = value >>> 0;
+    this.blend = blend;
     this.px = new Uint32Array(layer.data.buffer);
     this.before = new Map();
     this.last = null;
@@ -53,7 +57,9 @@ export class Stroke {
     if (x < 0 || y < 0 || x >= this.width || y >= this.height) return;
     const i = y * this.width + x;
     if (!this.before.has(i)) this.before.set(i, this.px[i]);
-    this.px[i] = this.value;
+    // Immer über den Wert vor dem Strich mischen: mehrfaches Überfahren im
+    // selben Strich macht die Stelle nicht dunkler.
+    this.px[i] = this.blend ? blendOver(this.value, this.before.get(i)) : this.value;
   }
 
   /** Zieht eine lückenlose Pixellinie (Bresenham) vom letzten Punkt aus. */

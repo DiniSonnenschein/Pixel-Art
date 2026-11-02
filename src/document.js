@@ -45,6 +45,27 @@ export function packColor({ r, g, b, a }) {
 }
 
 /**
+ * Legt eine (halb)transparente Farbe über einen vorhandenen Pixel
+ * ("source-over"), beide als gepackte Uint32. Deckende Farben ersetzen
+ * den Pixel unverändert, voll transparente lassen ihn wie er ist.
+ */
+export function blendOver(src, dst) {
+  const sa = src >>> 24;
+  if (sa === 255) return src >>> 0;
+  if (sa === 0) return dst >>> 0;
+  const da = dst >>> 24;
+  if (da === 0) return src >>> 0;
+  const saF = sa / 255, daF = da / 255;
+  const oa = saF + daF * (1 - saF);
+  let out = 0;
+  for (let shift = 0; shift < 24; shift += 8) {
+    const s = (src >>> shift) & 255, d = (dst >>> shift) & 255;
+    out |= Math.round((s * saF + d * daF * (1 - saF)) / oa) << shift;
+  }
+  return ((Math.round(oa * 255) << 24) | out) >>> 0;
+}
+
+/**
  * Verrechnet alle sichtbaren Ebenen eines Frames ("source-over") mit
  * Ganzzahl-Mathematik, damit das Ergebnis überall identisch ist.
  * Voll deckende und voll transparente Pixel bleiben exakt erhalten.

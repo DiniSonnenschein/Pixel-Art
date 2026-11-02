@@ -223,3 +223,35 @@ test('Frames: neu, Kopie, verschieben, löschen und GameMaker-Streifen', async (
   assert.equal(doc.frames.length, 2);
   e1.undo();
 });
+
+test('Halbtransparente Farbe legt sich über vorhandene Pixel', async () => {
+  const { blendOver, packColor } = await import('../src/document.js');
+  const { floodFill } = await import('../src/tools.js');
+  const red = packColor({ r: 255, g: 0, b: 0, a: 255 });
+  const halfBlue = packColor({ r: 0, g: 0, b: 255, a: 128 });
+  const unpack = (v) => [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, v >>> 24];
+  assert.deepEqual(unpack(blendOver(halfBlue, red)), [127, 0, 128, 255], 'über Rot: Mischfarbe, deckend');
+  assert.equal(blendOver(halfBlue, 0), halfBlue, 'auf leerem Pixel: Farbe selbst');
+  assert.equal(blendOver(red, halfBlue), red, 'deckende Farbe ersetzt');
+  assert.equal(blendOver(packColor({ r: 9, g: 9, b: 9, a: 0 }), red), red, 'voll transparent ändert nichts');
+
+  const layer = createLayer(4, 1);
+  const px = new Uint32Array(layer.data.buffer);
+  px.fill(red);
+  const s = new Stroke(layer, 4, 1, halfBlue, true);
+  s.to(0, 0); s.to(3, 0); s.to(0, 0); // hin und zurück im selben Strich
+  assert.ok([...px].every((v) => v === blendOver(halfBlue, red)), 'im selben Strich nur einmal gemischt');
+  const entry = s.finish();
+  const s2 = new Stroke(layer, 4, 1, halfBlue, true);
+  s2.to(0, 0);
+  s2.finish();
+  assert.equal(px[0], blendOver(halfBlue, blendOver(halfBlue, red)), 'neuer Strich legt weitere Schicht darüber');
+  entry.undo();
+
+  const l2 = createLayer(3, 1);
+  const p2 = new Uint32Array(l2.data.buffer);
+  p2.fill(red);
+  floodFill(l2, 3, 1, 0, 0, halfBlue, true);
+  assert.ok([...p2].every((v) => v === blendOver(halfBlue, red)), 'Fülleimer mischt ebenfalls');
+  assert.equal(floodFill(l2, 3, 1, 0, 0, packColor({ r: 0, g: 0, b: 0, a: 0 }), true), null, 'transparent füllen: nichts zu tun, keine Endlosschleife');
+});

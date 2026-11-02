@@ -98,7 +98,7 @@ class App {
       return;
     }
     const value = this.tool === 'eraser' ? 0 : packColor(this.color);
-    this.stroke = new Stroke(layer, this.doc.width, this.doc.height, value);
+    this.stroke = new Stroke(layer, this.doc.width, this.doc.height, value, this.tool !== 'eraser');
     this.stroke.to(p.x, p.y);
     this.view.invalidate();
   }
@@ -125,7 +125,7 @@ class App {
         toast('Die Ebene ist ausgeblendet – zum Füllen erst einblenden.');
         return;
       }
-      const entry = floodFill(currentLayer(this.doc), this.doc.width, this.doc.height, p.x, p.y, packColor(this.color));
+      const entry = floodFill(currentLayer(this.doc), this.doc.width, this.doc.height, p.x, p.y, packColor(this.color), true);
       if (entry) this.commit(entry, true);
       return;
     }
